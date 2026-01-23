@@ -1,0 +1,339 @@
+import random
+from typing import List, Tuple, Optional
+import os
+
+from src.models import PaperConfig, FontConfig
+from src.models.coco_annotation import BoundingBox
+from src.annotations.coco_manager import COCOAnnotationManager
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from .text_variation import TextVariationEngine, AdvancedTextRenderer
+
+
+class CipherImageGenerator:
+    """Generates aged cipher document images"""
+
+    def __init__(self, paper_config: PaperConfig, font_config: FontConfig, variation_level: str = "medium"):
+        self.paper_config = paper_config
+        self.font_config = font_config
+        self.variation_engine = TextVariationEngine(variation_level)
+        self.text_renderer = AdvancedTextRenderer(self.variation_engine)
+
+        # Use new COCO manager
+        self.coco_manager = COCOAnnotationManager()
+        self.current_image_id = None
+
+    def create_aged_paper(self) -> Image.Image:
+        """Create aged paper background"""
+        img = Image.new('RGB', (self.paper_config.width, self.paper_config.height),
+                        color='#F4E8D0')
+        draw = ImageDraw.Draw(img)
+
+        # Apply aging effects based on aging_level
+        aging = self.paper_config.aging_level / 100.0
+
+        # Add yellowing/browning
+        for _ in range(int(500 * aging)):
+            x = random.randint(0, self.paper_config.width)
+            y = random.randint(0, self.paper_config.height)
+            size = random.randint(5, 30)
+            color = random.choice(['#D4C4A8', '#C8B896', '#BCA87A'])
+            alpha = random.randint(10, 50)
+            overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+            overlay_draw = ImageDraw.Draw(overlay)
+            overlay_draw.ellipse([x, y, x + size, y + size],
+                                 fill=(*self._hex_to_rgb(color), alpha))
+            img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
+
+        # Add defects
+        if 'stains' in self.paper_config.defects:
+            self._add_stains(img, int(10 * aging))
+
+        if 'burns' in self.paper_config.defects:
+            self._add_burns(img, int(5 * aging))
+
+        if 'holes' in self.paper_config.defects:
+            self._add_holes(img, int(3 * aging))
+
+        if 'tears' in self.paper_config.defects:
+            self._add_tears(img, int(5 * aging))
+
+        if 'wrinkled_edges' in self.paper_config.defects:
+            self._add_wrinkled_edges(img)
+
+        # Apply slight blur for texture
+        img = img.filter(ImageFilter.GaussianBlur(radius=0.5))
+
+        return img
+
+    def _hex_to_rgb(self, hex_color):
+        """Convert hex color to RGB tuple"""
+        hex_color = hex_color.lstrip('#')
+        return tuple(int(hex_color[i:i + 2], 16) for i in (0, 2, 4))
+
+    def _add_stains(self, img, count):
+        """Add stains to paper"""
+        draw = ImageDraw.Draw(img, 'RGBA')
+        for _ in range(count):
+            x = random.randint(0, img.width)
+            y = random.randint(0, img.height)
+            size = random.randint(20, 80)
+            color = random.choice(['#8B7355', '#A0826D', '#6B5D4F'])
+            alpha = random.randint(30, 80)
+            draw.ellipse([x, y, x + size, y + size],
+                         fill=(*self._hex_to_rgb(color), alpha))
+
+    def _add_burns(self, img, count):
+        """Add burn marks"""
+        draw = ImageDraw.Draw(img, 'RGBA')
+        for _ in range(count):
+            x = random.randint(0, img.width)
+            y = random.randint(0, img.height)
+            size = random.randint(15, 40)
+            draw.ellipse([x, y, x + size, y + size],
+                         fill=(80, 60, 40, 120))
+
+    def _add_holes(self, img, count):
+        """Add holes from rodents/insects"""
+        draw = ImageDraw.Draw(img, 'RGBA')
+        for _ in range(count):
+            x = random.randint(50, img.width - 50)
+            y = random.randint(50, img.height - 50)
+            size = random.randint(5, 15)
+            draw.ellipse([x, y, x + size, y + size],
+                         fill=(255, 255, 255, 255))
+
+    def _add_tears(self, img, count):
+        """Add tears on edges"""
+        draw = ImageDraw.Draw(img, 'RGBA')
+        for _ in range(count):
+            edge = random.choice(['left', 'right', 'top', 'bottom'])
+            if edge == 'left':
+                x = random.randint(0, 20)
+                y = random.randint(0, img.height)
+                points = [(x, y), (x + random.randint(10, 30), y + random.randint(-20, 20))]
+            elif edge == 'right':
+                x = random.randint(img.width - 20, img.width)
+                y = random.randint(0, img.height)
+                points = [(x, y), (x - random.randint(10, 30), y + random.randint(-20, 20))]
+            elif edge == 'top':
+                x = random.randint(0, 20)
+                y = random.randint(0, img.height)
+                points = [(x, y), (x + random.randint(10, 30), y + random.randint(-20, 20))]
+            elif edge == 'bottom':
+                x = random.randint(img.width - 20, img.width)
+                y = random.randint(0, img.height)
+                points = [(x, y), (x - random.randint(10, 30), y + random.randint(-20, 20))]
+            draw.line(points, fill=(0, 0, 0, 255), width=2)
+
+    def _add_wrinkled_edges(self, img):
+        """Add wrinkled edges effect"""
+        # Darken edges slightly
+        draw = ImageDraw.Draw(img, 'RGBA')
+        edge_width = 30
+
+        # Top edge
+        for i in range(edge_width):
+            alpha = int(50 * (1 - i / edge_width))
+            draw.line([(0, i), (img.width, i)], fill=(100, 80, 60, alpha))
+
+        # Bottom edge
+        for i in range(edge_width):
+            alpha = int(50 * (1 - i / edge_width))
+            draw.line([(0, img.height - 1 - i), (img.width, img.height - 1 - i)],
+                      fill=(100, 80, 60, alpha))
+
+    def register_image(self, filename: str) -> int:
+        """Register a new image with COCO manager and return its ID"""
+        image_id = self.coco_manager.add_image(
+            filename,
+            self.paper_config.width,
+            self.paper_config.height
+        )
+        self.current_image_id = image_id
+        return image_id
+
+    def render_cipher_text(self, img: Image.Image, cipher_entries: List[Tuple[str, str]],
+                           start_x: int, start_y: int, block_id: int = 0,
+                           font_path: Optional[str] = None, use_variations: bool = True,
+                           track_annotations: bool = True) -> int:
+        """Render cipher text with keys on image"""
+
+        # Load font path
+        if font_path is None:
+            font_path = self._get_fallback_font_path()
+
+        if use_variations and font_path:
+            # Use advanced renderer with variations
+            y_offset = start_y
+            separator = self._get_separator()
+
+            print(f"[DEBUG] render_cipher_text: use_variations={use_variations}, track_annotations={track_annotations}")
+            print(f"[DEBUG] Total entries to render: {len(cipher_entries)}")
+
+            # Track the start index for section bbox
+            section_start_idx = len(self.variation_engine.collected_pair_bboxes)
+
+            for idx, (cipher_text, key_value) in enumerate(cipher_entries):
+                print(f"[DEBUG] Rendering entry {idx + 1}: '{cipher_text}' - '{key_value}'")
+
+# TU JE  PROBLEM ZE CIPHER_ENTRIES JE UZ V PARE ASI
+
+                # Render with variations and annotation tracking
+                y_offset = self.text_renderer.render_cipher_entry(
+                    img, cipher_text, key_value, start_x, y_offset,
+                    font_path, self.font_config.font_size, separator,
+                    column_separator=self.font_config.column_separator,
+                    paper_width=self.paper_config.width,
+                    track_annotations=track_annotations
+                )
+
+            print(f"[DEBUG] After all entries:")
+            print(f"  - Elements: {len(self.variation_engine.collected_element_bboxes)}")
+            print(f"  - Pairs: {len(self.variation_engine.collected_pair_bboxes)}")
+
+            # Create section bbox from all pairs in this render call
+            if track_annotations:
+                section_end_idx = len(self.variation_engine.collected_pair_bboxes)
+                section_pairs = self.variation_engine.collected_pair_bboxes[section_start_idx:section_end_idx]
+
+                if len(section_pairs) > 0:
+                    section_bbox = BoundingBox()
+                    section_bbox.text = f"Section {block_id} ({len(section_pairs)} entries)"
+
+                    # Combine all pair bboxes into section
+                    for pair_bbox in section_pairs:
+                        if section_bbox.min_x == float('inf'):
+                            section_bbox.min_x = pair_bbox.min_x
+                            section_bbox.min_y = pair_bbox.min_y
+                            section_bbox.max_x = pair_bbox.max_x
+                            section_bbox.max_y = pair_bbox.max_y
+                        else:
+                            section_bbox.min_x = min(section_bbox.min_x, pair_bbox.min_x)
+                            section_bbox.min_y = min(section_bbox.min_y, pair_bbox.min_y)
+                            section_bbox.max_x = max(section_bbox.max_x, pair_bbox.max_x)
+                            section_bbox.max_y = max(section_bbox.max_y, pair_bbox.max_y)
+
+                    if section_bbox.is_valid():
+                        self.variation_engine.collected_section_bboxes.append(section_bbox)
+                        print(f"[DEBUG] Created section bbox with {len(section_pairs)} pairs")
+
+            # Collect all annotations after rendering all entries
+            if track_annotations and self.current_image_id is not None:
+                annotations = self.variation_engine.get_annotations(self.current_image_id)
+                print(f"[DEBUG] Exporting {len(annotations)} annotations to COCO manager")
+                self.coco_manager.add_annotations(self.current_image_id, annotations)
+
+            return int(y_offset)
+
+        else:
+            # Fallback to original non-varied rendering
+            return self._render_text_simple(img, cipher_entries, start_x, start_y,
+                                            block_id, font_path)
+
+    def _get_fallback_font_path(self) -> Optional[str]:
+        """Get a fallback font path"""
+        fallback_fonts = [
+            "times.ttf",
+            "georgia.ttf",
+            "arial.ttf",
+            "C:\\Windows\\Fonts\\times.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/System/Library/Fonts/Times.ttc",
+        ]
+
+        for font_path in fallback_fonts:
+            if os.path.exists(font_path):
+                return font_path
+        return None
+
+    def _render_text_simple(self, img: Image.Image, cipher_entries: List[Tuple[str, str]],
+                            start_x: int, start_y: int, block_id: int,
+                            font_path: Optional[str]) -> int:
+        """Simple rendering without variations (fallback)"""
+        draw = ImageDraw.Draw(img)
+
+        # Load font
+        font = self._load_font(font_path)
+
+        y_offset = start_y
+        line_height = self.font_config.font_size + self.font_config.spacing
+
+        for cipher_text, key_value in cipher_entries:
+            text_bbox = draw.textbbox((start_x, y_offset), cipher_text, font=font)
+            draw.text((start_x, y_offset), cipher_text, fill='#2C2416', font=font)
+
+            separator_x = text_bbox[2] + 10
+            separator = self._get_separator()
+            draw.text((separator_x, y_offset), separator, fill='#2C2416', font=font)
+
+            key_x = separator_x + 50
+            draw.text((key_x, y_offset), key_value, fill='#2C2416', font=font)
+
+            y_offset += line_height
+
+            if self.font_config.column_separator != 'none':
+                self._draw_column_separator(draw, start_x, y_offset,
+                                            self.paper_config.width - start_x - 50)
+                y_offset += 5
+
+        return y_offset
+
+    def _load_font(self, font_path: Optional[str] = None):
+        """Load font with fallback options"""
+        # If custom font path provided, try to load it
+        if font_path and os.path.exists(font_path):
+            try:
+                return ImageFont.truetype(font_path, self.font_config.font_size)
+            except Exception as e:
+                print(f"Failed to load custom font {font_path}: {e}")
+
+        # Try common handwritten/historical fonts
+        fallback_fonts = [
+            "times.ttf",
+            "georgia.ttf",
+            "arial.ttf",
+            "calibri.ttf",
+            "C:\\Windows\\Fonts\\times.ttf",
+            "C:\\Windows\\Fonts\\georgia.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/System/Library/Fonts/Times.ttc",
+        ]
+
+        for font_name in fallback_fonts:
+            try:
+                return ImageFont.truetype(font_name, self.font_config.font_size)
+            except:
+                continue
+
+        # Last resort: default font
+        print("Warning: Using default font. Add custom fonts for better results.")
+        return ImageFont.load_default()
+
+    def _get_separator(self) -> str:
+        """Get separator between cipher and key"""
+        if self.font_config.key_separator == 'dots':
+            return " . . . "
+        elif self.font_config.key_separator == 'dashes':
+            return " " + "—" * self.font_config.dash_count + " "
+        else:
+            return "    "
+
+    def _draw_column_separator(self, draw, x, y, width):
+        """Draw column separator line"""
+        if self.font_config.column_separator == 'line':
+            draw.line([(x, y), (x + width, y)], fill='#2C2416', width=1)
+        elif self.font_config.column_separator == 'double_line':
+            draw.line([(x, y), (x + width, y)], fill='#2C2416', width=1)
+            draw.line([(x, y + 3), (x + width, y + 3)], fill='#2C2416', width=1)
+
+    def export_coco_annotations(self, output_path: str):
+        """Export COCO annotations to file"""
+        self.coco_manager.export_coco(output_path)
+
+    def get_annotation_stats(self):
+        """Get statistics about collected annotations"""
+        return self.coco_manager.get_stats()
+
+    def reset_annotations(self):
+        """Reset all annotations (useful when generating multiple batches)"""
+        self.coco_manager.reset()
