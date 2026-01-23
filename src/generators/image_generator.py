@@ -152,6 +152,32 @@ class CipherImageGenerator:
         self.current_image_id = image_id
         return image_id
 
+    def _create_column_section_bbox(self, start_idx: int, end_idx: int,
+                                    block_id: int, column_number: int):
+        """Create a section bounding box for a column"""
+        section_pairs = self.variation_engine.collected_pair_bboxes[start_idx:end_idx]
+
+        if len(section_pairs) > 0:
+            section_bbox = BoundingBox()
+            section_bbox.text = f"Section {block_id} Column {column_number} ({len(section_pairs)} entries)"
+
+            # Combine all pair bboxes into section
+            for pair_bbox in section_pairs:
+                if section_bbox.min_x == float('inf'):
+                    section_bbox.min_x = pair_bbox.min_x
+                    section_bbox.min_y = pair_bbox.min_y
+                    section_bbox.max_x = pair_bbox.max_x
+                    section_bbox.max_y = pair_bbox.max_y
+                else:
+                    section_bbox.min_x = min(section_bbox.min_x, pair_bbox.min_x)
+                    section_bbox.min_y = min(section_bbox.min_y, pair_bbox.min_y)
+                    section_bbox.max_x = max(section_bbox.max_x, pair_bbox.max_x)
+                    section_bbox.max_y = max(section_bbox.max_y, pair_bbox.max_y)
+
+            if section_bbox.is_valid():
+                self.variation_engine.collected_section_bboxes.append(section_bbox)
+                print(f"[DEBUG] Created section bbox for Column {column_number} with {len(section_pairs)} pairs")
+
     def render_cipher_text(self, img: Image.Image, cipher_entries: List[Tuple[str, str]],
                            start_x: int, start_y: int, block_id: int = 0,
                            font_path: Optional[str] = None, use_variations: bool = True,
@@ -177,6 +203,7 @@ class CipherImageGenerator:
             current_column_x = left_margin
             current_y = top_margin
             column_max_x = left_margin  # Track the widest point in current column
+            column_number = 1  # Track which column we're in
 
             separator = self._get_separator()
 
@@ -184,8 +211,8 @@ class CipherImageGenerator:
             print(f"[DEBUG] Total entries to render: {len(cipher_entries)}")
             print(f"[DEBUG] Multi-column layout: max_height={max_height}, column_spacing={column_spacing}")
 
-            # Track the start index for section bbox
-            section_start_idx = len(self.variation_engine.collected_pair_bboxes)
+            # Track the start index for section bbox (per column)
+            column_section_start_idx = len(self.variation_engine.collected_pair_bboxes)
 
             for idx, (cipher_text, key_value) in enumerate(cipher_entries):
                 print(f"[DEBUG] Rendering entry {idx + 1}: '{cipher_text}' - '{key_value}'")
@@ -197,10 +224,18 @@ class CipherImageGenerator:
 
                 # Check if we need to move to next column
                 if current_y + estimated_entry_height > max_height and idx > 0:
+                    # Create section bbox for the previous column before moving to next
+                    if track_annotations:
+                        section_end_idx = len(self.variation_engine.collected_pair_bboxes)
+                        self._create_column_section_bbox(column_section_start_idx, section_end_idx,
+                                                        block_id, column_number)
+
                     # Move to next column
                     current_column_x = column_max_x + column_spacing
                     current_y = top_margin
-                    print(f"[DEBUG] Moving to new column at x={current_column_x}, resetting y to {top_margin}")
+                    column_number += 1
+                    column_section_start_idx = len(self.variation_engine.collected_pair_bboxes)
+                    print(f"[DEBUG] Moving to new column {column_number} at x={current_column_x}, resetting y to {top_margin}")
 
                     # Check if we have space for a new column
                     if current_column_x + 100 > self.paper_config.width - right_margin:
@@ -238,31 +273,11 @@ class CipherImageGenerator:
             print(f"  - Elements: {len(self.variation_engine.collected_element_bboxes)}")
             print(f"  - Pairs: {len(self.variation_engine.collected_pair_bboxes)}")
 
-            # Create section bbox from all pairs in this render call
+            # Create section bbox for the last column
             if track_annotations:
                 section_end_idx = len(self.variation_engine.collected_pair_bboxes)
-                section_pairs = self.variation_engine.collected_pair_bboxes[section_start_idx:section_end_idx]
-
-                if len(section_pairs) > 0:
-                    section_bbox = BoundingBox()
-                    section_bbox.text = f"Section {block_id} ({len(section_pairs)} entries)"
-
-                    # Combine all pair bboxes into section
-                    for pair_bbox in section_pairs:
-                        if section_bbox.min_x == float('inf'):
-                            section_bbox.min_x = pair_bbox.min_x
-                            section_bbox.min_y = pair_bbox.min_y
-                            section_bbox.max_x = pair_bbox.max_x
-                            section_bbox.max_y = pair_bbox.max_y
-                        else:
-                            section_bbox.min_x = min(section_bbox.min_x, pair_bbox.min_x)
-                            section_bbox.min_y = min(section_bbox.min_y, pair_bbox.min_y)
-                            section_bbox.max_x = max(section_bbox.max_x, pair_bbox.max_x)
-                            section_bbox.max_y = max(section_bbox.max_y, pair_bbox.max_y)
-
-                    if section_bbox.is_valid():
-                        self.variation_engine.collected_section_bboxes.append(section_bbox)
-                        print(f"[DEBUG] Created section bbox with {len(section_pairs)} pairs")
+                self._create_column_section_bbox(column_section_start_idx, section_end_idx,
+                                                block_id, column_number)
 
             # Collect all annotations after rendering all entries
             if track_annotations and self.current_image_id is not None:
