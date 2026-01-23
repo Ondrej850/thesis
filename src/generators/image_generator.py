@@ -156,19 +156,33 @@ class CipherImageGenerator:
                            start_x: int, start_y: int, block_id: int = 0,
                            font_path: Optional[str] = None, use_variations: bool = True,
                            track_annotations: bool = True) -> int:
-        """Render cipher text with keys on image"""
+        """Render cipher text with keys on image using multi-column layout"""
 
         # Load font path
         if font_path is None:
             font_path = self._get_fallback_font_path()
 
         if use_variations and font_path:
-            # Use advanced renderer with variations
-            y_offset = start_y
+            # Multi-column layout configuration
+            left_margin = start_x
+            top_margin = start_y
+            right_margin = 50
+            bottom_margin = 50
+            column_spacing = 30  # Gap between columns
+
+            # Calculate available space
+            max_height = self.paper_config.height - bottom_margin
+
+            # Initialize column tracking
+            current_column_x = left_margin
+            current_y = top_margin
+            column_max_x = left_margin  # Track the widest point in current column
+
             separator = self._get_separator()
 
             print(f"[DEBUG] render_cipher_text: use_variations={use_variations}, track_annotations={track_annotations}")
             print(f"[DEBUG] Total entries to render: {len(cipher_entries)}")
+            print(f"[DEBUG] Multi-column layout: max_height={max_height}, column_spacing={column_spacing}")
 
             # Track the start index for section bbox
             section_start_idx = len(self.variation_engine.collected_pair_bboxes)
@@ -176,16 +190,49 @@ class CipherImageGenerator:
             for idx, (cipher_text, key_value) in enumerate(cipher_entries):
                 print(f"[DEBUG] Rendering entry {idx + 1}: '{cipher_text}' - '{key_value}'")
 
-# TU JE  PROBLEM ZE CIPHER_ENTRIES JE UZ V PARE ASI
+                # Estimate the height needed for this entry (including separator if present)
+                estimated_entry_height = self.font_config.font_size + self.font_config.spacing
+                if self.font_config.column_separator != 'none':
+                    estimated_entry_height += self.font_config.font_size * 0.6  # Add separator spacing
+
+                # Check if we need to move to next column
+                if current_y + estimated_entry_height > max_height and idx > 0:
+                    # Move to next column
+                    current_column_x = column_max_x + column_spacing
+                    current_y = top_margin
+                    print(f"[DEBUG] Moving to new column at x={current_column_x}, resetting y to {top_margin}")
+
+                    # Check if we have space for a new column
+                    if current_column_x + 100 > self.paper_config.width - right_margin:
+                        print(f"[WARNING] Reached right margin, may overflow page")
 
                 # Render with variations and annotation tracking
-                y_offset = self.text_renderer.render_cipher_entry(
-                    img, cipher_text, key_value, start_x, y_offset,
+                # Calculate max column width (leave space for column gap)
+                available_width = self.paper_config.width - current_column_x - right_margin
+                max_col_width = min(300, available_width)  # Max 300px per column or available width
+
+                next_y = self.text_renderer.render_cipher_entry(
+                    img, cipher_text, key_value, current_column_x, current_y,
                     font_path, self.font_config.font_size, separator,
                     column_separator=self.font_config.column_separator,
                     paper_width=self.paper_config.width,
-                    track_annotations=track_annotations
+                    track_annotations=track_annotations,
+                    max_column_width=max_col_width
                 )
+
+                # Update column_max_x by checking the actual bounding box width
+                if track_annotations and len(self.variation_engine.collected_pair_bboxes) > 0:
+                    # Get the last rendered pair's bounding box
+                    last_pair_bbox = self.variation_engine.collected_pair_bboxes[-1]
+                    if last_pair_bbox.is_valid():
+                        column_max_x = max(column_max_x, last_pair_bbox.max_x)
+                else:
+                    # Fallback: estimate text width
+                    text_width = len(cipher_text + separator + key_value) * (self.font_config.font_size * 0.6)
+                    column_max_x = max(column_max_x, current_column_x + text_width)
+
+                # Update current Y position
+                current_y = next_y
 
             print(f"[DEBUG] After all entries:")
             print(f"  - Elements: {len(self.variation_engine.collected_element_bboxes)}")
@@ -223,7 +270,7 @@ class CipherImageGenerator:
                 print(f"[DEBUG] Exporting {len(annotations)} annotations to COCO manager")
                 self.coco_manager.add_annotations(self.current_image_id, annotations)
 
-            return int(y_offset)
+            return int(current_y)
 
         else:
             # Fallback to original non-varied rendering
