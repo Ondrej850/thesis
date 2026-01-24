@@ -531,7 +531,8 @@ class CipherEntryRenderer:
                             separator: str = " — — — ",
                             column_separator: str = "none",
                             paper_width: int = 800,
-                            track_annotations: bool = False) -> float:
+                            track_annotations: bool = False,
+                            max_column_width: int = 300) -> float:
         """
         Render a cipher entry (text + separator + key) with variations
 
@@ -594,7 +595,8 @@ class CipherEntryRenderer:
             # Position separator halfway between this line and next line
             separator_gap = base_size * 0.3  # 30% of font size
             separator_y = int(next_y + separator_gap)
-            line_width = paper_width - x - 50
+            # Use max_column_width to limit separator to current column
+            line_width = min(max_column_width, paper_width - x - 50)
 
             if column_separator == 'line':
                 draw.line([(x, separator_y), (x + line_width, separator_y)],
