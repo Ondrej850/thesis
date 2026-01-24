@@ -16,8 +16,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from src.models.coco_annotation import BoundingBox, COCOAnnotation
 
 
-class TextVariationEngine:
-    """Applies realistic variations to text rendering for handwritten appearance"""
+class VariatedTextRenderer:
+    """Low-level text renderer that applies realistic variations for handwritten appearance"""
 
     def __init__(self, variation_level: str = "medium"):
         """
@@ -449,11 +449,81 @@ class TextVariationEngine:
         return annotations
 
 
-class AdvancedTextRenderer:
-    """Advanced text renderer with realistic handwriting variations"""
+class CipherEntryRenderer:
+    """High-level renderer for cipher entries (cipher_text + separator + key_value)
 
-    def __init__(self, variation_engine: TextVariationEngine):
-        self.variation_engine = variation_engine
+    Encapsulates the low-level VariatedTextRenderer and provides domain-specific
+    layout logic for rendering cipher entries with proper annotation tracking.
+    """
+
+    def __init__(self, text_renderer: VariatedTextRenderer):
+        self._text_renderer = text_renderer
+        self._section_start_idx = None
+
+    def start_section(self):
+        """Mark the start of a new section for annotation tracking"""
+        self._section_start_idx = len(self._text_renderer.collected_pair_bboxes)
+
+    def end_section(self, section_id: int = 0) -> Optional[BoundingBox]:
+        """
+        Create and store a section bounding box from all pairs since start_section()
+
+        Args:
+            section_id: Identifier for this section
+
+        Returns:
+            The created section bbox, or None if no pairs were added
+        """
+        if self._section_start_idx is None:
+            return None
+
+        section_end_idx = len(self._text_renderer.collected_pair_bboxes)
+        section_pairs = self._text_renderer.collected_pair_bboxes[self._section_start_idx:section_end_idx]
+
+        if len(section_pairs) == 0:
+            return None
+
+        # Create section bbox by combining all pair bboxes
+        section_bbox = BoundingBox()
+        section_bbox.text = f"Section {section_id} ({len(section_pairs)} entries)"
+
+        for pair_bbox in section_pairs:
+            if section_bbox.min_x == float('inf'):
+                section_bbox.min_x = pair_bbox.min_x
+                section_bbox.min_y = pair_bbox.min_y
+                section_bbox.max_x = pair_bbox.max_x
+                section_bbox.max_y = pair_bbox.max_y
+            else:
+                section_bbox.min_x = min(section_bbox.min_x, pair_bbox.min_x)
+                section_bbox.min_y = min(section_bbox.min_y, pair_bbox.min_y)
+                section_bbox.max_x = max(section_bbox.max_x, pair_bbox.max_x)
+                section_bbox.max_y = max(section_bbox.max_y, pair_bbox.max_y)
+
+        if section_bbox.is_valid():
+            self._text_renderer.collected_section_bboxes.append(section_bbox)
+            self._section_start_idx = None  # Reset for next section
+            return section_bbox
+
+        return None
+
+    def get_annotations(self, image_id: int = 0) -> List[COCOAnnotation]:
+        """
+        Get all COCO annotations (elements, pairs, sections)
+
+        Args:
+            image_id: The image ID for the annotations
+
+        Returns:
+            List of COCO annotations
+        """
+        return self._text_renderer.get_annotations(image_id)
+
+    def reset_annotations(self):
+        """Reset all collected annotations"""
+        self._text_renderer.collected_element_bboxes = []
+        self._text_renderer.collected_pair_bboxes = []
+        self._text_renderer.collected_section_bboxes = []
+        self._section_start_idx = None
 
     def render_cipher_entry(self, img: Image.Image, cipher_text: str,
                             key_value: str, x: float, y: float,
@@ -470,31 +540,31 @@ class AdvancedTextRenderer:
         base_color = (44, 36, 22)  # Dark brown ink
 
         # Track which elements belong to this entry
-        elements_start_idx = len(self.variation_engine.collected_element_bboxes)
+        elements_start_idx = len(self._text_renderer.collected_element_bboxes)
 
         # Render cipher text and track its bbox
-        end_x, end_y = self.variation_engine.render_varied_text(
+        end_x, end_y = self._text_renderer.render_varied_text(
             img, cipher_text, x, y, font_path, base_size, base_color, track_annotations
         )
 
         # Render separator (don't track)
         sep_x = end_x + 10
-        sep_end_x, _ = self.variation_engine.render_varied_text(
+        sep_end_x, _ = self._text_renderer.render_varied_text(
             img, separator, sep_x, y, font_path, base_size, base_color, False
         )
 
         # Render key value and track its bbox AS A SEPARATE ELEMENT
         key_x = sep_end_x + 10
-        key_end_x, _ = self.variation_engine.render_varied_text(
+        key_end_x, _ = self._text_renderer.render_varied_text(
             img, key_value, key_x, y, font_path, base_size, base_color, track_annotations  # CHANGED: now tracks!
         )
 
         # Create pair bbox from all elements added during this entry
         if track_annotations:
-            elements_end_idx = len(self.variation_engine.collected_element_bboxes)
+            elements_end_idx = len(self._text_renderer.collected_element_bboxes)
 
             # Get all elements that were added (cipher_text + key_value)
-            entry_elements = self.variation_engine.collected_element_bboxes[elements_start_idx:elements_end_idx]
+            entry_elements = self._text_renderer.collected_element_bboxes[elements_start_idx:elements_end_idx]
 
             if len(entry_elements) >= 2:  # Should have at least cipher + key
                 # Create pair bbox combining all elements in this entry
@@ -512,11 +582,11 @@ class AdvancedTextRenderer:
                         '-inf') else elem_bbox.max_y
 
                 if pair_bbox.is_valid():
-                    self.variation_engine.collected_pair_bboxes.append(pair_bbox)
+                    self._text_renderer.collected_pair_bboxes.append(pair_bbox)
 
         # Calculate next line position
-        line_height = base_size + self.variation_engine.variation_settings["position_y"] * 3
-        next_y = y + self.variation_engine.get_varied_spacing(line_height)
+        line_height = base_size + self._text_renderer.variation_settings["position_y"] * 3
+        next_y = y + self._text_renderer.get_varied_spacing(line_height)
 
         # Draw row separator if needed
         if column_separator != 'none':

@@ -3,10 +3,9 @@ from typing import List, Tuple, Optional
 import os
 
 from src.models import PaperConfig, FontConfig
-from src.models.coco_annotation import BoundingBox
 from src.annotations.coco_manager import COCOAnnotationManager
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
-from .text_variation import TextVariationEngine, AdvancedTextRenderer
+from .text_variation import VariatedTextRenderer, CipherEntryRenderer
 
 
 class CipherImageGenerator:
@@ -15,8 +14,9 @@ class CipherImageGenerator:
     def __init__(self, paper_config: PaperConfig, font_config: FontConfig, variation_level: str = "medium"):
         self.paper_config = paper_config
         self.font_config = font_config
-        self.variation_engine = TextVariationEngine(variation_level)
-        self.text_renderer = AdvancedTextRenderer(self.variation_engine)
+        # Create low-level renderer and wrap it in high-level cipher renderer
+        text_renderer = VariatedTextRenderer(variation_level)
+        self.cipher_renderer = CipherEntryRenderer(text_renderer)
 
         # Use new COCO manager
         self.coco_manager = COCOAnnotationManager()
@@ -163,23 +163,22 @@ class CipherImageGenerator:
             font_path = self._get_fallback_font_path()
 
         if use_variations and font_path:
-            # Use advanced renderer with variations
+            # Use cipher renderer with variations
             y_offset = start_y
             separator = self._get_separator()
 
             print(f"[DEBUG] render_cipher_text: use_variations={use_variations}, track_annotations={track_annotations}")
             print(f"[DEBUG] Total entries to render: {len(cipher_entries)}")
 
-            # Track the start index for section bbox
-            section_start_idx = len(self.variation_engine.collected_pair_bboxes)
+            # Start tracking this section
+            if track_annotations:
+                self.cipher_renderer.start_section()
 
             for idx, (cipher_text, key_value) in enumerate(cipher_entries):
                 print(f"[DEBUG] Rendering entry {idx + 1}: '{cipher_text}' - '{key_value}'")
 
-# TU JE  PROBLEM ZE CIPHER_ENTRIES JE UZ V PARE ASI
-
                 # Render with variations and annotation tracking
-                y_offset = self.text_renderer.render_cipher_entry(
+                y_offset = self.cipher_renderer.render_cipher_entry(
                     img, cipher_text, key_value, start_x, y_offset,
                     font_path, self.font_config.font_size, separator,
                     column_separator=self.font_config.column_separator,
@@ -187,39 +186,15 @@ class CipherImageGenerator:
                     track_annotations=track_annotations
                 )
 
-            print(f"[DEBUG] After all entries:")
-            print(f"  - Elements: {len(self.variation_engine.collected_element_bboxes)}")
-            print(f"  - Pairs: {len(self.variation_engine.collected_pair_bboxes)}")
-
-            # Create section bbox from all pairs in this render call
+            # End section and create section bbox
             if track_annotations:
-                section_end_idx = len(self.variation_engine.collected_pair_bboxes)
-                section_pairs = self.variation_engine.collected_pair_bboxes[section_start_idx:section_end_idx]
-
-                if len(section_pairs) > 0:
-                    section_bbox = BoundingBox()
-                    section_bbox.text = f"Section {block_id} ({len(section_pairs)} entries)"
-
-                    # Combine all pair bboxes into section
-                    for pair_bbox in section_pairs:
-                        if section_bbox.min_x == float('inf'):
-                            section_bbox.min_x = pair_bbox.min_x
-                            section_bbox.min_y = pair_bbox.min_y
-                            section_bbox.max_x = pair_bbox.max_x
-                            section_bbox.max_y = pair_bbox.max_y
-                        else:
-                            section_bbox.min_x = min(section_bbox.min_x, pair_bbox.min_x)
-                            section_bbox.min_y = min(section_bbox.min_y, pair_bbox.min_y)
-                            section_bbox.max_x = max(section_bbox.max_x, pair_bbox.max_x)
-                            section_bbox.max_y = max(section_bbox.max_y, pair_bbox.max_y)
-
-                    if section_bbox.is_valid():
-                        self.variation_engine.collected_section_bboxes.append(section_bbox)
-                        print(f"[DEBUG] Created section bbox with {len(section_pairs)} pairs")
+                section_bbox = self.cipher_renderer.end_section(block_id)
+                if section_bbox:
+                    print(f"[DEBUG] Created section bbox: {section_bbox.text}")
 
             # Collect all annotations after rendering all entries
             if track_annotations and self.current_image_id is not None:
-                annotations = self.variation_engine.get_annotations(self.current_image_id)
+                annotations = self.cipher_renderer.get_annotations(self.current_image_id)
                 print(f"[DEBUG] Exporting {len(annotations)} annotations to COCO manager")
                 self.coco_manager.add_annotations(self.current_image_id, annotations)
 
@@ -337,3 +312,4 @@ class CipherImageGenerator:
     def reset_annotations(self):
         """Reset all annotations (useful when generating multiple batches)"""
         self.coco_manager.reset()
+        self.cipher_renderer.reset_annotations()
