@@ -264,7 +264,8 @@ class CipherGeneratorGUI:
         # Cipher config listeners (content change - invalidate cache)
         self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
         self.key_type_var.trace_add('write', self._on_cipher_config_change)
-        self.num_entries_var.trace_add('write', self._on_cipher_config_change)
+        # num_entries uses visual change - smart caching handles add/remove entries
+        self.num_entries_var.trace_add('write', self._on_visual_config_change)
 
         # Font config listeners (visual only - use cached entries)
         self.font_selection_var.trace_add('write', self._on_visual_config_change)
@@ -418,23 +419,49 @@ class CipherGeneratorGUI:
             self._is_generating = False
 
     def _get_cipher_entries(self) -> List[Tuple[str, str]]:
-        """Get cipher entries from database (with caching for consistent preview)
+        """Get cipher entries from database (with smart caching for consistent preview)
 
-        Returns cached entries if available and cipher config hasn't changed.
-        This ensures visual changes (font, spacing, etc.) show the same content.
+        Caching behavior:
+        - If cipher_type or key_type changes: regenerate all entries
+        - If num_entries decreases: return first N from cache
+        - If num_entries increases: keep existing, generate only the new ones
         """
         cipher_type = self.cipher_type_var.get()
         num_entries = self.num_entries_var.get()
         key_type = self.key_type_var.get()
 
-        # Check if we can use cached entries
+        # Check if cipher type or key type changed (requires full regeneration)
         if (self._cached_cipher_entries is not None
             and self._cached_cipher_type == cipher_type
-            and self._cached_num_entries == num_entries
             and self._cached_key_type == key_type):
-            return self._cached_cipher_entries
 
-        # Generate new entries
+            cached_count = len(self._cached_cipher_entries)
+
+            if num_entries <= cached_count:
+                # Just return first N entries from cache
+                return self._cached_cipher_entries[:num_entries]
+            else:
+                # Need more entries - keep existing and generate additional ones
+                entries = list(self._cached_cipher_entries)  # Copy existing
+                additional_needed = num_entries - cached_count
+
+                words = self.db.get_cipher_keys(cipher_type)
+                if words:
+                    for i in range(additional_needed):
+                        word = random.choice(words)
+                        key_num = self._generate_key_number(cipher_type)
+                        entries.append((word, str(key_num)))
+                else:
+                    # Fallback for empty database
+                    for i in range(additional_needed):
+                        entries.append((f"Sample{cached_count + i}", str(100 + cached_count + i)))
+
+                # Update cache with extended entries
+                self._cached_cipher_entries = entries
+                self._cached_num_entries = num_entries
+                return entries
+
+        # Full regeneration needed (type changed or no cache)
         words = self.db.get_cipher_keys(cipher_type)
 
         if not words:
@@ -445,20 +472,7 @@ class CipherGeneratorGUI:
             entries = []
             for i in range(num_entries):
                 word = random.choice(words)
-                # Generate random key number based on cipher type
-                if cipher_type == 'substitution':
-                    key_num = random.randint(100, 250)
-                elif cipher_type == 'bigram':
-                    key_num = random.randint(70, 99)
-                elif cipher_type == 'trigram':
-                    key_num = random.randint(170, 199)
-                elif cipher_type == 'dictionary':
-                    key_num = random.randint(300, 350)
-                elif cipher_type == 'nulls':
-                    key_num = random.randint(900, 950)
-                else:
-                    key_num = random.randint(100, 200)
-
+                key_num = self._generate_key_number(cipher_type)
                 entries.append((word, str(key_num)))
 
         # Cache the entries and config state
@@ -468,6 +482,21 @@ class CipherGeneratorGUI:
         self._cached_key_type = key_type
 
         return entries
+
+    def _generate_key_number(self, cipher_type: str) -> int:
+        """Generate a random key number based on cipher type"""
+        if cipher_type == 'substitution':
+            return random.randint(100, 250)
+        elif cipher_type == 'bigram':
+            return random.randint(70, 99)
+        elif cipher_type == 'trigram':
+            return random.randint(170, 199)
+        elif cipher_type == 'dictionary':
+            return random.randint(300, 350)
+        elif cipher_type == 'nulls':
+            return random.randint(900, 950)
+        else:
+            return random.randint(100, 200)
 
     def _display_preview(self, img: Image.Image):
         """Display preview image on canvas"""
