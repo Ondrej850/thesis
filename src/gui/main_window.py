@@ -54,6 +54,12 @@ class CipherGeneratorGUI:
         self._cached_num_entries = None
         self._cached_key_type = None
 
+        # Cached paper image for consistent preview
+        self._cached_paper_image = None
+        self._cached_paper_aging = None
+        self._cached_paper_type = None
+        self._cached_paper_defects = None
+
         self.setup_gui()
 
         # Bind change listeners after GUI is set up
@@ -255,11 +261,11 @@ class CipherGeneratorGUI:
 
     def _bind_config_change_listeners(self):
         """Bind change listeners to all config widgets for real-time preview"""
-        # Paper config listeners (visual only - use cached entries)
-        self.aging_var.trace_add('write', self._on_visual_config_change)
-        self.paper_type_var.trace_add('write', self._on_visual_config_change)
+        # Paper config listeners (invalidate paper cache, keep cipher cache)
+        self.aging_var.trace_add('write', self._on_paper_config_change)
+        self.paper_type_var.trace_add('write', self._on_paper_config_change)
         for var in self.defect_vars.values():
-            var.trace_add('write', self._on_visual_config_change)
+            var.trace_add('write', self._on_paper_config_change)
 
         # Cipher config listeners (content change - invalidate cache)
         self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
@@ -277,17 +283,26 @@ class CipherGeneratorGUI:
         self.spacing_var.trace_add('write', self._on_visual_config_change)
 
     def _on_visual_config_change(self, *args):
-        """Called when visual config changes - uses cached cipher entries"""
+        """Called when visual config changes - uses all cached data"""
+        self._schedule_debounced_regenerate()
+
+    def _on_paper_config_change(self, *args):
+        """Called when paper config changes - invalidates paper cache only"""
+        self._invalidate_paper_cache()
         self._schedule_debounced_regenerate()
 
     def _on_cipher_config_change(self, *args):
-        """Called when cipher config changes - invalidates cache and regenerates"""
+        """Called when cipher config changes - invalidates cipher cache and regenerates"""
         self._invalidate_cipher_cache()
         self._schedule_debounced_regenerate()
 
     def _invalidate_cipher_cache(self):
         """Invalidate the cached cipher entries"""
         self._cached_cipher_entries = None
+
+    def _invalidate_paper_cache(self):
+        """Invalidate the cached paper image"""
+        self._cached_paper_image = None
 
     def _schedule_debounced_regenerate(self):
         """Schedule a debounced regeneration"""
@@ -321,11 +336,12 @@ class CipherGeneratorGUI:
     def generate_preview(self):
         """Generate preview of cipher document (manual button click)
 
-        This also regenerates cipher entries (new random words/keys).
+        This regenerates everything fresh: new paper defects and new cipher entries.
         """
         try:
-            # Invalidate cache to get fresh entries on manual generation
+            # Invalidate all caches to get completely fresh document
             self._invalidate_cipher_cache()
+            self._invalidate_paper_cache()
             self._do_generate(show_message=True)
         except Exception as e:
             import traceback
@@ -378,8 +394,25 @@ class CipherGeneratorGUI:
             filename = "preview.png"
             generator.register_image(filename)
 
-            # Generate base image
-            img = generator.create_aged_paper()
+            # Get current paper config state
+            current_aging = self.aging_var.get()
+            current_paper_type = self.paper_type_var.get()
+            current_defects = frozenset(k for k, v in self.defect_vars.items() if v.get())
+
+            # Check if we can use cached paper image
+            if (self._cached_paper_image is not None
+                and self._cached_paper_aging == current_aging
+                and self._cached_paper_type == current_paper_type
+                and self._cached_paper_defects == current_defects):
+                # Use cached paper (make a copy so text rendering doesn't affect cache)
+                img = self._cached_paper_image.copy()
+            else:
+                # Generate new paper and cache it
+                img = generator.create_aged_paper()
+                self._cached_paper_image = img.copy()
+                self._cached_paper_aging = current_aging
+                self._cached_paper_type = current_paper_type
+                self._cached_paper_defects = current_defects
 
             # Get cipher entries from database
             cipher_entries = self._get_cipher_entries()
