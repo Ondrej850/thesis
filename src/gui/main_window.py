@@ -8,6 +8,7 @@ from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
 import random
 import os
+import threading
 from typing import List, Tuple
 import sys
 
@@ -42,7 +43,15 @@ class CipherGeneratorGUI:
         self.preview_image = None
         self.current_generator = None  # Store generator instance
 
+        # Real-time preview: debounce timer for config changes
+        self._debounce_timer = None
+        self._debounce_delay = 0.3  # 300ms delay before regenerating
+        self._is_generating = False  # Prevent concurrent generations
+
         self.setup_gui()
+
+        # Bind change listeners after GUI is set up
+        self._bind_config_change_listeners()
 
     def setup_gui(self):
         """Setup GUI elements"""
@@ -238,8 +247,69 @@ class CipherGeneratorGUI:
         ttk.Button(button_frame, text="🔤 Fonts",
                   command=self.show_font_stats, width=15).pack(side=tk.LEFT, padx=5)
 
+    def _bind_config_change_listeners(self):
+        """Bind change listeners to all config widgets for real-time preview"""
+        # Paper config listeners
+        self.aging_var.trace_add('write', self._on_config_change)
+        self.paper_type_var.trace_add('write', self._on_config_change)
+        for var in self.defect_vars.values():
+            var.trace_add('write', self._on_config_change)
+
+        # Cipher config listeners
+        self.cipher_type_var.trace_add('write', self._on_config_change)
+        self.key_type_var.trace_add('write', self._on_config_change)
+        self.num_entries_var.trace_add('write', self._on_config_change)
+
+        # Font config listeners
+        self.font_selection_var.trace_add('write', self._on_config_change)
+        self.variation_level_var.trace_add('write', self._on_config_change)
+        self.font_size_var.trace_add('write', self._on_config_change)
+        self.col_sep_var.trace_add('write', self._on_config_change)
+        self.key_sep_var.trace_add('write', self._on_config_change)
+        self.dash_count_var.trace_add('write', self._on_config_change)
+        self.spacing_var.trace_add('write', self._on_config_change)
+
+    def _on_config_change(self, *args):
+        """Called when any config value changes - triggers debounced regeneration"""
+        # Cancel any pending regeneration
+        if self._debounce_timer is not None:
+            self._debounce_timer.cancel()
+
+        # Schedule new regeneration after delay
+        self._debounce_timer = threading.Timer(
+            self._debounce_delay,
+            self._debounced_regenerate
+        )
+        self._debounce_timer.start()
+
+    def _debounced_regenerate(self):
+        """Called after debounce delay - schedules regeneration on main thread"""
+        # Schedule on main thread (tkinter requirement)
+        self.root.after(0, self._regenerate_preview_silent)
+
+    def _regenerate_preview_silent(self):
+        """Regenerate preview without showing success message box"""
+        if self._is_generating:
+            return  # Skip if already generating
+
+        try:
+            self._do_generate(show_message=False)
+        except Exception as e:
+            # Silent fail for real-time updates - just print to console
+            print(f"[Preview] Generation error: {e}")
+
     def generate_preview(self):
-        """Generate preview of cipher document"""
+        """Generate preview of cipher document (manual button click)"""
+        try:
+            self._do_generate(show_message=True)
+        except Exception as e:
+            import traceback
+            messagebox.showerror("Error", f"Failed to generate preview:\n{str(e)}\n\n{traceback.format_exc()}")
+
+    def _do_generate(self, show_message: bool = True):
+        """Core generation logic - reusable for both manual and auto-regeneration"""
+        self._is_generating = True
+
         try:
             # Get selected font
             font_selection = self.font_selection_var.get()
@@ -281,7 +351,7 @@ class CipherGeneratorGUI:
 
             # Register the preview image
             filename = "preview.png"
-            image_id = generator.register_image(filename)
+            generator.register_image(filename)
 
             # Generate base image
             img = generator.create_aged_paper()
@@ -308,20 +378,20 @@ class CipherGeneratorGUI:
             # Display preview
             self._display_preview(img)
 
-            # Get annotation stats
-            stats = generator.get_annotation_stats()
-            variation_info = f" with {variation_level} variations" if use_variations else ""
-            font_info = f" using {font_selection}" if selected_font_path else ""
-            ann_info = f"\n\nAnnotations: {stats['total_annotations']} " \
-                      f"({stats.get('annotations_per_category', {}).get('element', 0)} elements, " \
-                      f"{stats.get('annotations_per_category', {}).get('pair', 0)} pairs, " \
-                      f"{stats.get('annotations_per_category', {}).get('section', 0)} sections)"
+            # Show success message only if requested (manual generation)
+            if show_message:
+                stats = generator.get_annotation_stats()
+                variation_info = f" with {variation_level} variations" if use_variations else ""
+                font_info = f" using {font_selection}" if selected_font_path else ""
+                ann_info = f"\n\nAnnotations: {stats['total_annotations']} " \
+                          f"({stats.get('annotations_per_category', {}).get('element', 0)} elements, " \
+                          f"{stats.get('annotations_per_category', {}).get('pair', 0)} pairs, " \
+                          f"{stats.get('annotations_per_category', {}).get('section', 0)} sections)"
 
-            messagebox.showinfo("Success", f"Preview generated{font_info}{variation_info}!{ann_info}")
+                messagebox.showinfo("Success", f"Preview generated{font_info}{variation_info}!{ann_info}")
 
-        except Exception as e:
-            import traceback
-            messagebox.showerror("Error", f"Failed to generate preview:\n{str(e)}\n\n{traceback.format_exc()}")
+        finally:
+            self._is_generating = False
 
     def _get_cipher_entries(self) -> List[Tuple[str, str]]:
         """Get cipher entries from database"""
