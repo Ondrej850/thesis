@@ -223,25 +223,15 @@ class CipherGeneratorGUI:
                     width=10).grid(row=6, column=1, sticky=tk.W, pady=2)
 
     def setup_preview(self, parent):
-        """Setup preview area"""
-        # Create canvas with scrollbars
+        """Setup preview area - fits entire A4 page without scrolling"""
+        # Create canvas frame
         canvas_frame = ttk.Frame(parent)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
 
-        self.preview_canvas = tk.Canvas(canvas_frame, width=800, height=700, bg='white')
-
-        v_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL,
-                                   command=self.preview_canvas.yview)
-        h_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL,
-                                   command=self.preview_canvas.xview)
-
-        self.preview_canvas.configure(yscrollcommand=v_scrollbar.set,
-                                     xscrollcommand=h_scrollbar.set)
-
-        # Pack scrollbars and canvas
-        v_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        h_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
-        self.preview_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Canvas sized to fit A4 ratio (800x1100) scaled down to fit in window
+        # Height ~750px to leave room for buttons, width proportional
+        self.preview_canvas = tk.Canvas(canvas_frame, width=550, height=750, bg='#e0e0e0')
+        self.preview_canvas.pack(fill=tk.BOTH, expand=True)
 
     def setup_buttons(self, parent):
         """Setup action buttons"""
@@ -532,11 +522,24 @@ class CipherGeneratorGUI:
             return random.randint(100, 200)
 
     def _display_preview(self, img: Image.Image):
-        """Display preview image on canvas"""
-        # Resize for preview if needed
-        display_width = 800
-        ratio = display_width / img.width
-        display_height = int(img.height * ratio)
+        """Display preview image on canvas - scaled to fit entirely"""
+        # Get canvas dimensions
+        canvas_width = self.preview_canvas.winfo_width()
+        canvas_height = self.preview_canvas.winfo_height()
+
+        # Fallback if canvas not yet rendered
+        if canvas_width <= 1:
+            canvas_width = 550
+        if canvas_height <= 1:
+            canvas_height = 750
+
+        # Calculate scale to fit image within canvas (maintain aspect ratio)
+        width_ratio = canvas_width / img.width
+        height_ratio = canvas_height / img.height
+        scale = min(width_ratio, height_ratio) * 0.95  # 95% to add small margin
+
+        display_width = int(img.width * scale)
+        display_height = int(img.height * scale)
 
         preview_img = img.resize((display_width, display_height), Image.Resampling.LANCZOS)
 
@@ -546,12 +549,13 @@ class CipherGeneratorGUI:
         # Clear canvas
         self.preview_canvas.delete("all")
 
-        # Display image
-        self.preview_canvas.create_image(0, 0, anchor=tk.NW, image=photo)
-        self.preview_canvas.image = photo  # Keep reference
+        # Center image on canvas
+        x_offset = (canvas_width - display_width) // 2
+        y_offset = (canvas_height - display_height) // 2
 
-        # Update scroll region
-        self.preview_canvas.configure(scrollregion=(0, 0, display_width, display_height))
+        # Display image centered
+        self.preview_canvas.create_image(x_offset, y_offset, anchor=tk.NW, image=photo)
+        self.preview_canvas.image = photo  # Keep reference
 
     def save_image(self):
         """Save generated image"""
