@@ -48,6 +48,12 @@ class CipherGeneratorGUI:
         self._debounce_delay = 0.3  # 300ms delay before regenerating
         self._is_generating = False  # Prevent concurrent generations
 
+        # Cached cipher entries for consistent preview during visual changes
+        self._cached_cipher_entries = None
+        self._cached_cipher_type = None
+        self._cached_num_entries = None
+        self._cached_key_type = None
+
         self.setup_gui()
 
         # Bind change listeners after GUI is set up
@@ -249,28 +255,41 @@ class CipherGeneratorGUI:
 
     def _bind_config_change_listeners(self):
         """Bind change listeners to all config widgets for real-time preview"""
-        # Paper config listeners
-        self.aging_var.trace_add('write', self._on_config_change)
-        self.paper_type_var.trace_add('write', self._on_config_change)
+        # Paper config listeners (visual only - use cached entries)
+        self.aging_var.trace_add('write', self._on_visual_config_change)
+        self.paper_type_var.trace_add('write', self._on_visual_config_change)
         for var in self.defect_vars.values():
-            var.trace_add('write', self._on_config_change)
+            var.trace_add('write', self._on_visual_config_change)
 
-        # Cipher config listeners
-        self.cipher_type_var.trace_add('write', self._on_config_change)
-        self.key_type_var.trace_add('write', self._on_config_change)
-        self.num_entries_var.trace_add('write', self._on_config_change)
+        # Cipher config listeners (content change - invalidate cache)
+        self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
+        self.key_type_var.trace_add('write', self._on_cipher_config_change)
+        self.num_entries_var.trace_add('write', self._on_cipher_config_change)
 
-        # Font config listeners
-        self.font_selection_var.trace_add('write', self._on_config_change)
-        self.variation_level_var.trace_add('write', self._on_config_change)
-        self.font_size_var.trace_add('write', self._on_config_change)
-        self.col_sep_var.trace_add('write', self._on_config_change)
-        self.key_sep_var.trace_add('write', self._on_config_change)
-        self.dash_count_var.trace_add('write', self._on_config_change)
-        self.spacing_var.trace_add('write', self._on_config_change)
+        # Font config listeners (visual only - use cached entries)
+        self.font_selection_var.trace_add('write', self._on_visual_config_change)
+        self.variation_level_var.trace_add('write', self._on_visual_config_change)
+        self.font_size_var.trace_add('write', self._on_visual_config_change)
+        self.col_sep_var.trace_add('write', self._on_visual_config_change)
+        self.key_sep_var.trace_add('write', self._on_visual_config_change)
+        self.dash_count_var.trace_add('write', self._on_visual_config_change)
+        self.spacing_var.trace_add('write', self._on_visual_config_change)
 
-    def _on_config_change(self, *args):
-        """Called when any config value changes - triggers debounced regeneration"""
+    def _on_visual_config_change(self, *args):
+        """Called when visual config changes - uses cached cipher entries"""
+        self._schedule_debounced_regenerate()
+
+    def _on_cipher_config_change(self, *args):
+        """Called when cipher config changes - invalidates cache and regenerates"""
+        self._invalidate_cipher_cache()
+        self._schedule_debounced_regenerate()
+
+    def _invalidate_cipher_cache(self):
+        """Invalidate the cached cipher entries"""
+        self._cached_cipher_entries = None
+
+    def _schedule_debounced_regenerate(self):
+        """Schedule a debounced regeneration"""
         # Cancel any pending regeneration
         if self._debounce_timer is not None:
             self._debounce_timer.cancel()
@@ -299,8 +318,13 @@ class CipherGeneratorGUI:
             print(f"[Preview] Generation error: {e}")
 
     def generate_preview(self):
-        """Generate preview of cipher document (manual button click)"""
+        """Generate preview of cipher document (manual button click)
+
+        This also regenerates cipher entries (new random words/keys).
+        """
         try:
+            # Invalidate cache to get fresh entries on manual generation
+            self._invalidate_cipher_cache()
             self._do_generate(show_message=True)
         except Exception as e:
             import traceback
@@ -394,36 +418,54 @@ class CipherGeneratorGUI:
             self._is_generating = False
 
     def _get_cipher_entries(self) -> List[Tuple[str, str]]:
-        """Get cipher entries from database"""
+        """Get cipher entries from database (with caching for consistent preview)
+
+        Returns cached entries if available and cipher config hasn't changed.
+        This ensures visual changes (font, spacing, etc.) show the same content.
+        """
         cipher_type = self.cipher_type_var.get()
         num_entries = self.num_entries_var.get()
+        key_type = self.key_type_var.get()
 
-        # Get words from database
+        # Check if we can use cached entries
+        if (self._cached_cipher_entries is not None
+            and self._cached_cipher_type == cipher_type
+            and self._cached_num_entries == num_entries
+            and self._cached_key_type == key_type):
+            return self._cached_cipher_entries
+
+        # Generate new entries
         words = self.db.get_cipher_keys(cipher_type)
 
         if not words:
             # Generate sample entries if database is empty
-            return [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
+            entries = [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
+        else:
+            # Create entries: word + random key number
+            entries = []
+            for i in range(num_entries):
+                word = random.choice(words)
+                # Generate random key number based on cipher type
+                if cipher_type == 'substitution':
+                    key_num = random.randint(100, 250)
+                elif cipher_type == 'bigram':
+                    key_num = random.randint(70, 99)
+                elif cipher_type == 'trigram':
+                    key_num = random.randint(170, 199)
+                elif cipher_type == 'dictionary':
+                    key_num = random.randint(300, 350)
+                elif cipher_type == 'nulls':
+                    key_num = random.randint(900, 950)
+                else:
+                    key_num = random.randint(100, 200)
 
-        # Create entries: word + random key number
-        entries = []
-        for i in range(num_entries):
-            word = random.choice(words)
-            # Generate random key number based on cipher type
-            if cipher_type == 'substitution':
-                key_num = random.randint(100, 250)
-            elif cipher_type == 'bigram':
-                key_num = random.randint(70, 99)
-            elif cipher_type == 'trigram':
-                key_num = random.randint(170, 199)
-            elif cipher_type == 'dictionary':
-                key_num = random.randint(300, 350)
-            elif cipher_type == 'nulls':
-                key_num = random.randint(900, 950)
-            else:
-                key_num = random.randint(100, 200)
+                entries.append((word, str(key_num)))
 
-            entries.append((word, str(key_num)))
+        # Cache the entries and config state
+        self._cached_cipher_entries = entries
+        self._cached_cipher_type = cipher_type
+        self._cached_num_entries = num_entries
+        self._cached_key_type = key_type
 
         return entries
 
