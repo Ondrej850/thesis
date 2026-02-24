@@ -18,6 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
 from src.models.cipher_type import CipherType
+from src.models.table_codes_config import TableCodesConfig
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
 from src.annotations.coco_manager import COCOAnnotationManager
@@ -60,6 +61,10 @@ class CipherGeneratorGUI:
         self._cached_paper_type = None
         self._cached_paper_defects = None
 
+        # Cached table codes data
+        self._cached_table_data = None
+        self._cached_table_config_key = None
+
         self.setup_gui()
 
         # Bind change listeners after GUI is set up
@@ -91,6 +96,7 @@ class CipherGeneratorGUI:
         self.setup_paper_config(config_frame)
         self.setup_cipher_config(config_frame)
         self.setup_font_config(config_frame)
+        self.setup_table_codes_config(config_frame)
         self.setup_preview(preview_frame)
         self.setup_buttons(main_frame)
 
@@ -222,6 +228,78 @@ class CipherGeneratorGUI:
         ttk.Spinbox(frame, from_=5, to=20, textvariable=self.spacing_var,
                     width=10).grid(row=6, column=1, sticky=tk.W, pady=2)
 
+    def setup_table_codes_config(self, parent):
+        """Setup table codes configuration section (section 4)."""
+        frame = ttk.LabelFrame(parent, text="4. Table Codes Configuration", padding="5")
+        frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame.columnconfigure(1, weight=1)
+
+        # Layout type: column pairs (existing) vs table codes (new)
+        ttk.Label(frame, text="Layout Type:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.layout_type_var = tk.StringVar(value="column_pairs")
+        layout_combo = ttk.Combobox(
+            frame, textvariable=self.layout_type_var,
+            values=["column_pairs", "table_codes"],
+            state="readonly", width=25,
+        )
+        layout_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
+        ttk.Label(
+            frame,
+            text="(column_pairs = existing format; table_codes = homophonic table)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=0, column=2, sticky=tk.W, padx=5)
+
+        # Table content type
+        ttk.Label(frame, text="Table Content:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self.table_content_var = tk.StringVar(value="alphabet")
+        content_combo = ttk.Combobox(
+            frame, textvariable=self.table_content_var,
+            values=["alphabet", "ngrams", "nulls"],
+            state="readonly", width=25,
+        )
+        content_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Codes per symbol
+        ttk.Label(frame, text="Codes per Symbol:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.table_num_codes_var = tk.IntVar(value=3)
+        ttk.Spinbox(
+            frame, from_=1, to=10, textvariable=self.table_num_codes_var, width=10,
+        ).grid(row=2, column=1, sticky=tk.W, pady=2)
+
+        # Common letters boost
+        self.table_common_boost_var = tk.BooleanVar(value=True)
+        boost_check = ttk.Checkbutton(
+            frame,
+            text="More codes for common letters (E,T,A,O,I,N,S,H,R)",
+            variable=self.table_common_boost_var,
+            command=self._on_table_boost_toggle,
+        )
+        boost_check.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=2)
+
+        # Common letter code count (only visible when boost is enabled)
+        self._common_codes_label = ttk.Label(frame, text="Common Letter Codes:")
+        self._common_codes_label.grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.table_common_codes_var = tk.IntVar(value=5)
+        self._common_codes_spinbox = ttk.Spinbox(
+            frame, from_=2, to=20, textvariable=self.table_common_codes_var, width=10,
+        )
+        self._common_codes_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
+
+        # Columns per row
+        ttk.Label(frame, text="Symbols per Row:").grid(row=5, column=0, sticky=tk.W, pady=2)
+        self.table_cols_per_row_var = tk.IntVar(value=13)
+        ttk.Spinbox(
+            frame, from_=5, to=26, textvariable=self.table_cols_per_row_var, width=10,
+        ).grid(row=5, column=1, sticky=tk.W, pady=2)
+
+        # Sync enabled/disabled state on startup
+        self._on_table_boost_toggle()
+
+    def _on_table_boost_toggle(self):
+        """Show or hide the common-codes spinbox depending on the boost checkbox."""
+        state = "normal" if self.table_common_boost_var.get() else "disabled"
+        self._common_codes_spinbox.configure(state=state)
+
     def setup_preview(self, parent):
         """Setup preview area - fits entire A4 page without scrolling"""
         # Create canvas frame
@@ -238,15 +316,17 @@ class CipherGeneratorGUI:
         button_frame = ttk.Frame(parent)
         button_frame.grid(row=1, column=0, columnspan=2, pady=10)
 
-        ttk.Button(button_frame, text="🔄 Generate Preview",
+        ttk.Button(button_frame, text="Generate Preview",
                   command=self.generate_preview, width=20).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="💾 Save Image",
+        ttk.Button(button_frame, text="Save Image",
                   command=self.save_image, width=20).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="📊 Export COCO",
+        ttk.Button(button_frame, text="Export COCO",
                   command=self.export_annotations, width=20).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="📈 Stats",
+        ttk.Button(button_frame, text="Export YOLO",
+                  command=self.export_yolo_annotations, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Stats",
                   command=self.show_stats, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="🔤 Fonts",
+        ttk.Button(button_frame, text="Fonts",
                   command=self.show_font_stats, width=15).pack(side=tk.LEFT, padx=5)
 
     def _bind_config_change_listeners(self):
@@ -272,6 +352,14 @@ class CipherGeneratorGUI:
         self.dash_count_var.trace_add('write', self._on_visual_config_change)
         self.spacing_var.trace_add('write', self._on_visual_config_change)
 
+        # Table codes listeners
+        self.layout_type_var.trace_add('write', self._on_table_config_change)
+        self.table_content_var.trace_add('write', self._on_table_config_change)
+        self.table_num_codes_var.trace_add('write', self._on_table_config_change)
+        self.table_common_boost_var.trace_add('write', self._on_table_config_change)
+        self.table_common_codes_var.trace_add('write', self._on_table_config_change)
+        self.table_cols_per_row_var.trace_add('write', self._on_table_config_change)
+
     def _on_visual_config_change(self, *args):
         """Called when visual config changes - uses all cached data"""
         self._schedule_debounced_regenerate()
@@ -293,6 +381,16 @@ class CipherGeneratorGUI:
     def _invalidate_paper_cache(self):
         """Invalidate the cached paper image"""
         self._cached_paper_image = None
+
+    def _on_table_config_change(self, *args):
+        """Called when table codes config changes — invalidates table cache."""
+        self._invalidate_table_cache()
+        self._schedule_debounced_regenerate()
+
+    def _invalidate_table_cache(self):
+        """Invalidate the cached table codes data."""
+        self._cached_table_data = None
+        self._cached_table_config_key = None
 
     def _schedule_debounced_regenerate(self):
         """Schedule a debounced regeneration"""
@@ -404,17 +502,27 @@ class CipherGeneratorGUI:
                 self._cached_paper_type = current_paper_type
                 self._cached_paper_defects = current_defects
 
-            # Get cipher entries from database
-            cipher_entries = self._get_cipher_entries()
+            # Choose rendering path based on layout type
+            layout_type = self.layout_type_var.get()
 
-            # Render cipher text with variations and annotation tracking
-            generator.render_cipher_text(
-                img, cipher_entries, 50, 50,
-                block_id=1,
-                font_path=selected_font_path,
-                use_variations=use_variations,
-                track_annotations=True  # Always track for COCO export
-            )
+            if layout_type == "table_codes":
+                table_config = self._build_table_config()
+                generator.render_table_codes(
+                    img, table_config, 50, 50,
+                    font_path=selected_font_path,
+                    use_variations=use_variations,
+                    track_annotations=True,
+                )
+            else:
+                # Existing column-pairs layout
+                cipher_entries = self._get_cipher_entries()
+                generator.render_cipher_text(
+                    img, cipher_entries, 50, 50,
+                    block_id=1,
+                    font_path=selected_font_path,
+                    use_variations=use_variations,
+                    track_annotations=True,
+                )
 
             # Mark font as used (for statistics)
             if selected_font_path:
@@ -431,12 +539,17 @@ class CipherGeneratorGUI:
                 stats = generator.get_annotation_stats()
                 variation_info = f" with {variation_level} variations" if use_variations else ""
                 font_info = f" using {font_selection}" if selected_font_path else ""
-                ann_info = f"\n\nAnnotations: {stats['total_annotations']} " \
-                          f"({stats.get('annotations_per_category', {}).get('element', 0)} elements, " \
-                          f"{stats.get('annotations_per_category', {}).get('pair', 0)} pairs, " \
-                          f"{stats.get('annotations_per_category', {}).get('section', 0)} sections)"
-
-                messagebox.showinfo("Success", f"Preview generated{font_info}{variation_info}!{ann_info}")
+                ann_info = (
+                    f"\n\nAnnotations: {stats['total_annotations']} "
+                    f"({stats.get('annotations_per_category', {}).get('element', 0)} elements, "
+                    f"{stats.get('annotations_per_category', {}).get('pair', 0)} cells/pairs, "
+                    f"{stats.get('annotations_per_category', {}).get('section', 0)} sections)"
+                )
+                layout_info = f" [{layout_type}]"
+                messagebox.showinfo(
+                    "Success",
+                    f"Preview generated{font_info}{variation_info}{layout_info}!{ann_info}",
+                )
 
         finally:
             self._is_generating = False
@@ -505,6 +618,16 @@ class CipherGeneratorGUI:
         self._cached_key_type = key_type
 
         return entries
+
+    def _build_table_config(self) -> TableCodesConfig:
+        """Build a TableCodesConfig from the current GUI state."""
+        return TableCodesConfig(
+            content_type=self.table_content_var.get(),
+            num_codes=self.table_num_codes_var.get(),
+            use_common_boost=self.table_common_boost_var.get(),
+            common_codes=self.table_common_codes_var.get(),
+            max_cols_per_row=self.table_cols_per_row_var.get(),
+        )
 
     def _generate_key_number(self, cipher_type: str) -> int:
         """Generate a random key number based on cipher type"""
@@ -617,6 +740,42 @@ class CipherGeneratorGUI:
                 import traceback
                 messagebox.showerror("Error",
                                    f"Failed to export annotations:\n{str(e)}\n\n{traceback.format_exc()}")
+
+    def export_yolo_annotations(self):
+        """Export YOLO format annotations to a directory."""
+        if self.current_generator is None:
+            messagebox.showwarning("Warning",
+                                   "No annotations to export!\nGenerate a preview first.")
+            return
+
+        stats = self.current_generator.get_annotation_stats()
+        if stats["total_annotations"] == 0:
+            messagebox.showwarning("Warning",
+                                   "No annotations collected!\n"
+                                   "Make sure you generated a preview with variations enabled.")
+            return
+
+        output_dir = filedialog.askdirectory(title="Select output directory for YOLO annotations")
+        if not output_dir:
+            return
+
+        try:
+            yolo_path = self.current_generator.export_yolo_annotations(
+                output_dir, "preview.png"
+            )
+            messagebox.showinfo(
+                "Success",
+                f"YOLO annotations exported!\n\n"
+                f"Annotation file: {yolo_path}\n"
+                f"Classes file: {os.path.join(output_dir, 'classes.txt')}\n\n"
+                f"Total annotations: {stats['total_annotations']}",
+            )
+        except Exception as e:
+            import traceback
+            messagebox.showerror(
+                "Error",
+                f"Failed to export YOLO annotations:\n{str(e)}\n\n{traceback.format_exc()}",
+            )
 
     def show_stats(self):
         """Show dataset statistics"""

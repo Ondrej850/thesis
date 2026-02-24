@@ -1,14 +1,14 @@
 """
-COCO format annotation manager
+COCO format annotation manager with YOLO export support
 Path: src/annotation/coco_manager.py
 """
 
 import json
-from datetime import datetime
-from typing import List
-from dataclasses import asdict
-import sys
 import os
+import sys
+from datetime import datetime
+from dataclasses import asdict
+from typing import List
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -121,6 +121,72 @@ class COCOAnnotationManager:
         self.annotations = []
         self.image_id_counter = 1
         self.annotation_id_counter = 1
+
+    def export_yolo(self, output_dir: str, image_filename: str) -> str:
+        """Export annotations in YOLO format for a specific image.
+
+        YOLO format per line:
+            <class_id> <x_center_norm> <y_center_norm> <width_norm> <height_norm>
+
+        All coordinates are normalised by the image dimensions.
+
+        A ``classes.txt`` file listing category names is also written to
+        *output_dir*.
+
+        Args:
+            output_dir: Directory where ``<image_basename>.txt`` is written.
+            image_filename: The filename used when the image was registered.
+
+        Returns:
+            Path to the written YOLO annotation file.
+        """
+        # Find matching image record
+        image_data = next(
+            (img for img in self.images if img["file_name"] == image_filename), None
+        )
+        if image_data is None:
+            raise ValueError(
+                f"Image '{image_filename}' not found in COCO dataset. "
+                "Register the image first with add_image()."
+            )
+
+        img_width = image_data["width"]
+        img_height = image_data["height"]
+        image_id = image_data["id"]
+
+        lines: List[str] = []
+        for ann in self.annotations:
+            if ann["image_id"] != image_id:
+                continue
+            x, y, w, h = ann["bbox"]  # [x, y, width, height] in pixels
+            if w <= 0 or h <= 0:
+                continue
+            x_center = (x + w / 2) / img_width
+            y_center = (y + h / 2) / img_height
+            w_norm = w / img_width
+            h_norm = h / img_height
+            class_id = ann["category_id"]
+            lines.append(
+                f"{class_id} {x_center:.6f} {y_center:.6f} {w_norm:.6f} {h_norm:.6f}"
+            )
+
+        os.makedirs(output_dir, exist_ok=True)
+
+        base_name = os.path.splitext(os.path.basename(image_filename))[0]
+        yolo_txt_path = os.path.join(output_dir, f"{base_name}.txt")
+        with open(yolo_txt_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+
+        # Write classes.txt
+        classes_path = os.path.join(output_dir, "classes.txt")
+        with open(classes_path, "w", encoding="utf-8") as f:
+            for cat in self.categories:
+                f.write(cat["name"] + "\n")
+
+        print(f"✓ Exported YOLO annotations to: {yolo_txt_path}")
+        print(f"  - Annotations: {len(lines)}")
+        print(f"  - Classes file: {classes_path}")
+        return yolo_txt_path
 
     def validate_annotations(self) -> List[str]:
         """

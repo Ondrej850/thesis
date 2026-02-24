@@ -1,11 +1,13 @@
 import random
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 import os
 
 from src.models import PaperConfig, FontConfig
+from src.models.table_codes_config import TableCodesConfig
 from src.annotations.coco_manager import COCOAnnotationManager
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from .text_variation import VariatedTextRenderer, CipherEntryRenderer
+from .table_codes_generator import TableCodesGenerator
 
 
 class CipherImageGenerator:
@@ -377,3 +379,69 @@ class CipherImageGenerator:
         """Reset all annotations (useful when generating multiple batches)"""
         self.coco_manager.reset()
         self.cipher_renderer.reset_annotations()
+
+    # ------------------------------------------------------------------
+    # Table-codes rendering
+    # ------------------------------------------------------------------
+
+    def render_table_codes(
+        self,
+        img: Image.Image,
+        table_config: TableCodesConfig,
+        start_x: int,
+        start_y: int,
+        font_path: Optional[str] = None,
+        use_variations: bool = True,
+        track_annotations: bool = True,
+    ) -> int:
+        """Render a homophonic code table on *img*.
+
+        Args:
+            img: The PIL image to draw on (modified in-place).
+            table_config: Configuration for what to put in the table.
+            start_x: Left margin in pixels.
+            start_y: Top margin in pixels.
+            font_path: Path to handwritten TTF font; None uses system fallback.
+            use_variations: Whether to apply handwriting variation effects.
+            track_annotations: Whether to record COCO bounding boxes.
+
+        Returns:
+            Y position below the last rendered row block.
+        """
+        if font_path is None:
+            font_path = self._get_fallback_font_path()
+
+        variation_level = "medium" if use_variations else "none"
+        table_gen = TableCodesGenerator(
+            config=table_config,
+            font_size=self.font_config.font_size,
+            spacing=self.font_config.spacing,
+            variation_level=variation_level,
+        )
+
+        next_y = table_gen.render_table(
+            img, start_x, start_y, font_path,
+            track_annotations=track_annotations,
+        )
+
+        print(f"[DEBUG] render_table_codes: rendered table, next_y={next_y}")
+
+        # Feed collected annotations into the shared COCO manager
+        if track_annotations and self.current_image_id is not None:
+            annotations = table_gen.get_annotations(self.current_image_id)
+            print(f"[DEBUG] Table codes: exporting {len(annotations)} annotations")
+            self.coco_manager.add_annotations(self.current_image_id, annotations)
+
+        return int(next_y)
+
+    def export_yolo_annotations(self, output_dir: str, image_filename: str) -> str:
+        """Export YOLO format annotations for *image_filename*.
+
+        Args:
+            output_dir: Directory where the ``.txt`` and ``classes.txt`` are saved.
+            image_filename: Filename used when the image was registered.
+
+        Returns:
+            Path to the written YOLO ``.txt`` file.
+        """
+        return self.coco_manager.export_yolo(output_dir, image_filename)
