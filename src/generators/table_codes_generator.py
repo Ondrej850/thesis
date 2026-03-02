@@ -276,7 +276,15 @@ class TableCodesGenerator:
                 )
             current_y += row_h
 
-        # ── 4. Build geometry-based COCO annotations ─────────────────────
+        # ── 4. Vertical column separator lines ───────────────────────────
+        if self.config.draw_vertical_lines:
+            block_top = y
+            block_bottom = current_y  # just before the closing separator line
+            for col_idx in range(len(symbols) + 1):
+                vx = x + col_idx * col_w
+                draw.line([(vx, block_top), (vx, block_bottom)], fill="#2C2416", width=1)
+
+        # ── 5. Build geometry-based COCO annotations ─────────────────────
         if track_annotations:
             for col_idx, sym in enumerate(symbols):
                 n_codes = len(code_table[sym])

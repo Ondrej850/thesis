@@ -324,6 +324,15 @@ class CipherGeneratorGUI:
         )
         self._tc_cols_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
 
+        # Vertical column lines
+        self.table_vertical_lines_var = tk.BooleanVar(value=True)
+        self._tc_vlines_check = ttk.Checkbutton(
+            frame,
+            text="Draw vertical lines between columns",
+            variable=self.table_vertical_lines_var,
+        )
+        self._tc_vlines_check.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=2)
+
         # Sync enabled/disabled states on startup
         self._on_table_codes_toggle()
 
@@ -336,6 +345,7 @@ class CipherGeneratorGUI:
         self._tc_codes_spinbox.configure(state=spin_state)
         self._tc_boost_check.configure(state="normal" if enabled else "disabled")
         self._tc_cols_spinbox.configure(state=spin_state)
+        self._tc_vlines_check.configure(state="normal" if enabled else "disabled")
         # Also honour the boost-spinbox state within the enabled section
         if enabled:
             self._on_table_boost_toggle()
@@ -408,8 +418,9 @@ class CipherGeneratorGUI:
         self.table_num_codes_var.trace_add('write', self._on_table_content_change)
         self.table_common_boost_var.trace_add('write', self._on_table_content_change)
         self.table_common_codes_var.trace_add('write', self._on_table_content_change)
-        # Symbols-per-row only affects layout, not which codes are assigned
+        # Symbols-per-row and vertical lines only affect layout/visuals
         self.table_cols_per_row_var.trace_add('write', self._on_visual_config_change)
+        self.table_vertical_lines_var.trace_add('write', self._on_visual_config_change)
 
     def _on_visual_config_change(self, *args):
         """Called when visual config changes - uses all cached data"""
@@ -693,6 +704,7 @@ class CipherGeneratorGUI:
             use_common_boost=self.table_common_boost_var.get(),
             common_codes=self.table_common_codes_var.get(),
             max_cols_per_row=self.table_cols_per_row_var.get(),
+            draw_vertical_lines=self.table_vertical_lines_var.get(),
         )
 
     def _get_or_generate_code_table(self, table_config: TableCodesConfig) -> dict:

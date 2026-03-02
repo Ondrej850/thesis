@@ -26,11 +26,12 @@ NULL_SYMBOLS = list('⁂※⸎◊✠☙❧⁕†‡§¶*+×÷=~^')
 class TableCodesConfig:
     """Configuration for table-style homophonic cipher code tables"""
 
-    content_type: str = 'alphabet'   # 'alphabet', 'ngrams', 'nulls'
-    num_codes: int = 3               # Default codes per symbol
-    use_common_boost: bool = True    # Give extra codes to common English letters
-    common_codes: int = 5            # Codes for common letters (E,T,A,O,I,N,S,H,R)
-    max_cols_per_row: int = 13       # Max symbols per row (0 = auto-fit to page)
+    content_type: str = 'alphabet'      # 'alphabet', 'ngrams', 'nulls'
+    num_codes: int = 3                  # Default codes per symbol
+    use_common_boost: bool = True       # Give extra codes to common English letters
+    common_codes: int = 5               # Codes for common letters (E,T,A,O,I,N,S,H,R)
+    max_cols_per_row: int = 13          # Max symbols per row (0 = auto-fit to page)
+    draw_vertical_lines: bool = True    # Draw vertical separator lines between columns
 
     def get_symbols(self) -> List[str]:
         """Return the ordered list of symbols for the selected content type."""
