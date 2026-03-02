@@ -61,9 +61,12 @@ class CipherGeneratorGUI:
         self._cached_paper_type = None
         self._cached_paper_defects = None
 
-        # Cached table codes data
-        self._cached_table_data = None
-        self._cached_table_config_key = None
+        # Cached table codes: the symbol→codes assignment (not the rendered image).
+        # Invalidated only when content-defining settings change (content_type,
+        # num_codes, use_common_boost, common_codes).  Visual settings such as
+        # font_size or symbols_per_row do NOT invalidate this cache.
+        self._cached_code_table = None        # Dict[str, List[int]] or None
+        self._cached_code_table_key = None    # tuple key identifying the content
 
         self.setup_gui()
 
@@ -138,32 +141,57 @@ class CipherGeneratorGUI:
                            variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=5)
 
     def setup_cipher_config(self, parent):
-        """Setup cipher configuration section"""
-        frame = ttk.LabelFrame(parent, text="2. Cipher Configuration", padding="5")
+        """Setup column-pairs cipher configuration section."""
+        frame = ttk.LabelFrame(parent, text="2. Column Pairs", padding="5")
         frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
         frame.columnconfigure(1, weight=1)
 
+        # Enable / disable checkbox
+        self.include_column_pairs_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            frame, text="Include column pairs in document",
+            variable=self.include_column_pairs_var,
+            command=self._on_column_pairs_toggle,
+        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=2)
+
         # Cipher type
-        ttk.Label(frame, text="Cipher Type:").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self._cp_label_type = ttk.Label(frame, text="Cipher Type:")
+        self._cp_label_type.grid(row=1, column=0, sticky=tk.W, pady=2)
         self.cipher_type_var = tk.StringVar(value="substitution")
         cipher_types = ['substitution', 'bigram', 'trigram', 'dictionary', 'nulls']
-        cipher_combo = ttk.Combobox(frame, textvariable=self.cipher_type_var,
-                                   values=cipher_types, state='readonly', width=25)
-        cipher_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
+        self._cp_cipher_combo = ttk.Combobox(
+            frame, textvariable=self.cipher_type_var,
+            values=cipher_types, state='readonly', width=25,
+        )
+        self._cp_cipher_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Key type
-        ttk.Label(frame, text="Key Type:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self._cp_label_key = ttk.Label(frame, text="Key Type:")
+        self._cp_label_key.grid(row=2, column=0, sticky=tk.W, pady=2)
         self.key_type_var = tk.StringVar(value="number")
         key_types = ['number', 'special_character']
-        key_combo = ttk.Combobox(frame, textvariable=self.key_type_var,
-                                values=key_types, state='readonly', width=25)
-        key_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
+        self._cp_key_combo = ttk.Combobox(
+            frame, textvariable=self.key_type_var,
+            values=key_types, state='readonly', width=25,
+        )
+        self._cp_key_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Number of entries
-        ttk.Label(frame, text="Number of Entries:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self._cp_label_entries = ttk.Label(frame, text="Number of Entries:")
+        self._cp_label_entries.grid(row=3, column=0, sticky=tk.W, pady=2)
         self.num_entries_var = tk.IntVar(value=30)
-        ttk.Spinbox(frame, from_=5, to=100, textvariable=self.num_entries_var,
-                   width=10).grid(row=2, column=1, sticky=tk.W, pady=2)
+        self._cp_entries_spinbox = ttk.Spinbox(
+            frame, from_=5, to=100, textvariable=self.num_entries_var, width=10,
+        )
+        self._cp_entries_spinbox.grid(row=3, column=1, sticky=tk.W, pady=2)
+
+    def _on_column_pairs_toggle(self):
+        """Enable/disable column-pairs sub-controls based on checkbox."""
+        state = "readonly" if self.include_column_pairs_var.get() else "disabled"
+        spin_state = "normal" if self.include_column_pairs_var.get() else "disabled"
+        self._cp_cipher_combo.configure(state=state)
+        self._cp_key_combo.configure(state=state)
+        self._cp_entries_spinbox.configure(state=spin_state)
 
     def setup_font_config(self, parent):
         """Setup font configuration section"""
@@ -230,70 +258,89 @@ class CipherGeneratorGUI:
 
     def setup_table_codes_config(self, parent):
         """Setup table codes configuration section (section 4)."""
-        frame = ttk.LabelFrame(parent, text="4. Table Codes Configuration", padding="5")
+        frame = ttk.LabelFrame(parent, text="4. Table Codes", padding="5")
         frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
         frame.columnconfigure(1, weight=1)
 
-        # Layout type: column pairs (existing) vs table codes (new)
-        ttk.Label(frame, text="Layout Type:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.layout_type_var = tk.StringVar(value="column_pairs")
-        layout_combo = ttk.Combobox(
-            frame, textvariable=self.layout_type_var,
-            values=["column_pairs", "table_codes"],
-            state="readonly", width=25,
-        )
-        layout_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
+        # Enable / disable checkbox (off by default — opt-in feature)
+        self.include_table_codes_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            frame, text="Include table codes in document",
+            variable=self.include_table_codes_var,
+            command=self._on_table_codes_toggle,
+        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=2)
+
         ttk.Label(
             frame,
-            text="(column_pairs = existing format; table_codes = homophonic table)",
+            text="Table appears above column pairs when both are enabled.",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=0, column=2, sticky=tk.W, padx=5)
+        ).grid(row=0, column=3, sticky=tk.W, padx=5)
 
         # Table content type
-        ttk.Label(frame, text="Table Content:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self._tc_label_content = ttk.Label(frame, text="Table Content:")
+        self._tc_label_content.grid(row=1, column=0, sticky=tk.W, pady=2)
         self.table_content_var = tk.StringVar(value="alphabet")
-        content_combo = ttk.Combobox(
+        self._tc_content_combo = ttk.Combobox(
             frame, textvariable=self.table_content_var,
             values=["alphabet", "ngrams", "nulls"],
             state="readonly", width=25,
         )
-        content_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
+        self._tc_content_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Codes per symbol
-        ttk.Label(frame, text="Codes per Symbol:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self._tc_label_codes = ttk.Label(frame, text="Codes per Symbol:")
+        self._tc_label_codes.grid(row=2, column=0, sticky=tk.W, pady=2)
         self.table_num_codes_var = tk.IntVar(value=3)
-        ttk.Spinbox(
+        self._tc_codes_spinbox = ttk.Spinbox(
             frame, from_=1, to=10, textvariable=self.table_num_codes_var, width=10,
-        ).grid(row=2, column=1, sticky=tk.W, pady=2)
+        )
+        self._tc_codes_spinbox.grid(row=2, column=1, sticky=tk.W, pady=2)
 
         # Common letters boost
         self.table_common_boost_var = tk.BooleanVar(value=True)
-        boost_check = ttk.Checkbutton(
+        self._tc_boost_check = ttk.Checkbutton(
             frame,
             text="More codes for common letters (E,T,A,O,I,N,S,H,R)",
             variable=self.table_common_boost_var,
             command=self._on_table_boost_toggle,
         )
-        boost_check.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=2)
+        self._tc_boost_check.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=2)
 
-        # Common letter code count (only visible when boost is enabled)
-        self._common_codes_label = ttk.Label(frame, text="Common Letter Codes:")
-        self._common_codes_label.grid(row=4, column=0, sticky=tk.W, pady=2)
+        # Common letter code count
+        self._tc_label_common = ttk.Label(frame, text="Common Letter Codes:")
+        self._tc_label_common.grid(row=4, column=0, sticky=tk.W, pady=2)
         self.table_common_codes_var = tk.IntVar(value=5)
         self._common_codes_spinbox = ttk.Spinbox(
             frame, from_=2, to=20, textvariable=self.table_common_codes_var, width=10,
         )
         self._common_codes_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
 
-        # Columns per row
-        ttk.Label(frame, text="Symbols per Row:").grid(row=5, column=0, sticky=tk.W, pady=2)
+        # Symbols per row
+        self._tc_label_cols = ttk.Label(frame, text="Symbols per Row:")
+        self._tc_label_cols.grid(row=5, column=0, sticky=tk.W, pady=2)
         self.table_cols_per_row_var = tk.IntVar(value=13)
-        ttk.Spinbox(
+        self._tc_cols_spinbox = ttk.Spinbox(
             frame, from_=5, to=26, textvariable=self.table_cols_per_row_var, width=10,
-        ).grid(row=5, column=1, sticky=tk.W, pady=2)
+        )
+        self._tc_cols_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
 
-        # Sync enabled/disabled state on startup
-        self._on_table_boost_toggle()
+        # Sync enabled/disabled states on startup
+        self._on_table_codes_toggle()
+
+    def _on_table_codes_toggle(self):
+        """Enable/disable table-codes sub-controls based on the Include checkbox."""
+        enabled = self.include_table_codes_var.get()
+        combo_state = "readonly" if enabled else "disabled"
+        spin_state = "normal" if enabled else "disabled"
+        self._tc_content_combo.configure(state=combo_state)
+        self._tc_codes_spinbox.configure(state=spin_state)
+        self._tc_boost_check.configure(state="normal" if enabled else "disabled")
+        self._tc_cols_spinbox.configure(state=spin_state)
+        # Also honour the boost-spinbox state within the enabled section
+        if enabled:
+            self._on_table_boost_toggle()
+        else:
+            self._common_codes_spinbox.configure(state="disabled")
 
     def _on_table_boost_toggle(self):
         """Show or hide the common-codes spinbox depending on the boost checkbox."""
@@ -352,13 +399,17 @@ class CipherGeneratorGUI:
         self.dash_count_var.trace_add('write', self._on_visual_config_change)
         self.spacing_var.trace_add('write', self._on_visual_config_change)
 
-        # Table codes listeners
-        self.layout_type_var.trace_add('write', self._on_table_config_change)
-        self.table_content_var.trace_add('write', self._on_table_config_change)
-        self.table_num_codes_var.trace_add('write', self._on_table_config_change)
-        self.table_common_boost_var.trace_add('write', self._on_table_config_change)
-        self.table_common_codes_var.trace_add('write', self._on_table_config_change)
-        self.table_cols_per_row_var.trace_add('write', self._on_table_config_change)
+        # Include-section toggles (visual — just re-render, caches are fine)
+        self.include_column_pairs_var.trace_add('write', self._on_visual_config_change)
+        self.include_table_codes_var.trace_add('write', self._on_visual_config_change)
+
+        # Table codes: content-changing settings invalidate the code-table cache
+        self.table_content_var.trace_add('write', self._on_table_content_change)
+        self.table_num_codes_var.trace_add('write', self._on_table_content_change)
+        self.table_common_boost_var.trace_add('write', self._on_table_content_change)
+        self.table_common_codes_var.trace_add('write', self._on_table_content_change)
+        # Symbols-per-row only affects layout, not which codes are assigned
+        self.table_cols_per_row_var.trace_add('write', self._on_visual_config_change)
 
     def _on_visual_config_change(self, *args):
         """Called when visual config changes - uses all cached data"""
@@ -382,15 +433,15 @@ class CipherGeneratorGUI:
         """Invalidate the cached paper image"""
         self._cached_paper_image = None
 
-    def _on_table_config_change(self, *args):
-        """Called when table codes config changes — invalidates table cache."""
-        self._invalidate_table_cache()
+    def _on_table_content_change(self, *args):
+        """Called when table content settings change — invalidates code-table cache."""
+        self._invalidate_code_table_cache()
         self._schedule_debounced_regenerate()
 
-    def _invalidate_table_cache(self):
-        """Invalidate the cached table codes data."""
-        self._cached_table_data = None
-        self._cached_table_config_key = None
+    def _invalidate_code_table_cache(self):
+        """Clear the cached symbol→codes assignment."""
+        self._cached_code_table = None
+        self._cached_code_table_key = None
 
     def _schedule_debounced_regenerate(self):
         """Schedule a debounced regeneration"""
@@ -430,6 +481,7 @@ class CipherGeneratorGUI:
             # Invalidate all caches to get completely fresh document
             self._invalidate_cipher_cache()
             self._invalidate_paper_cache()
+            self._invalidate_code_table_cache()
             self._do_generate(show_message=True)
         except Exception as e:
             import traceback
@@ -502,22 +554,31 @@ class CipherGeneratorGUI:
                 self._cached_paper_type = current_paper_type
                 self._cached_paper_defects = current_defects
 
-            # Choose rendering path based on layout type
-            layout_type = self.layout_type_var.get()
+            include_table = self.include_table_codes_var.get()
+            include_pairs = self.include_column_pairs_var.get()
 
-            if layout_type == "table_codes":
+            # Track current Y so table and pairs stack vertically on same page
+            current_y = 50
+
+            # ── Table codes (rendered first, at top of page) ─────────────
+            if include_table:
                 table_config = self._build_table_config()
-                generator.render_table_codes(
-                    img, table_config, 50, 50,
+                code_table = self._get_or_generate_code_table(table_config)
+                current_y = generator.render_table_codes(
+                    img, table_config, 50, current_y,
                     font_path=selected_font_path,
                     use_variations=use_variations,
                     track_annotations=True,
+                    code_table=code_table,
                 )
-            else:
-                # Existing column-pairs layout
+                # Add a gap between table and column pairs
+                current_y += self.spacing_var.get() * 4
+
+            # ── Column pairs (rendered below table, or from top if no table) ──
+            if include_pairs:
                 cipher_entries = self._get_cipher_entries()
                 generator.render_cipher_text(
-                    img, cipher_entries, 50, 50,
+                    img, cipher_entries, 50, current_y,
                     block_id=1,
                     font_path=selected_font_path,
                     use_variations=use_variations,
@@ -539,13 +600,18 @@ class CipherGeneratorGUI:
                 stats = generator.get_annotation_stats()
                 variation_info = f" with {variation_level} variations" if use_variations else ""
                 font_info = f" using {font_selection}" if selected_font_path else ""
+                parts = []
+                if include_table:
+                    parts.append("table codes")
+                if include_pairs:
+                    parts.append("column pairs")
+                layout_info = " [" + " + ".join(parts) + "]" if parts else " [nothing selected]"
                 ann_info = (
                     f"\n\nAnnotations: {stats['total_annotations']} "
                     f"({stats.get('annotations_per_category', {}).get('element', 0)} elements, "
                     f"{stats.get('annotations_per_category', {}).get('pair', 0)} cells/pairs, "
                     f"{stats.get('annotations_per_category', {}).get('section', 0)} sections)"
                 )
-                layout_info = f" [{layout_type}]"
                 messagebox.showinfo(
                     "Success",
                     f"Preview generated{font_info}{variation_info}{layout_info}!{ann_info}",
@@ -628,6 +694,38 @@ class CipherGeneratorGUI:
             common_codes=self.table_common_codes_var.get(),
             max_cols_per_row=self.table_cols_per_row_var.get(),
         )
+
+    def _get_or_generate_code_table(self, table_config: TableCodesConfig) -> dict:
+        """Return a cached symbol→codes assignment, generating one if needed.
+
+        The cache is keyed on (content_type, num_codes, use_common_boost,
+        common_codes) — only content-defining settings.  Visual settings
+        (font size, symbols per row, variation level, …) do NOT trigger
+        regeneration, so changing font size won't reshuffle all the numbers.
+        """
+        from src.generators.table_codes_generator import TableCodesGenerator
+
+        cache_key = (
+            table_config.content_type,
+            table_config.num_codes,
+            table_config.use_common_boost,
+            table_config.common_codes,
+        )
+
+        if self._cached_code_table is not None and self._cached_code_table_key == cache_key:
+            return self._cached_code_table
+
+        # Generate fresh code table
+        gen = TableCodesGenerator(
+            config=table_config,
+            font_size=self.font_size_var.get(),
+            spacing=self.spacing_var.get(),
+        )
+        code_table = gen.generate_code_table()
+
+        self._cached_code_table = code_table
+        self._cached_code_table_key = cache_key
+        return code_table
 
     def _generate_key_number(self, cipher_type: str) -> int:
         """Generate a random key number based on cipher type"""

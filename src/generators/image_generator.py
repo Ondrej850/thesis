@@ -218,9 +218,13 @@ class CipherImageGenerator:
                     if track_annotations:
                         self.cipher_renderer.start_section()
 
-                    # Check if we have space for a new column
+                    # Stop if there is no horizontal space for another column
                     if current_column_x + 100 > self.paper_config.width - right_margin:
-                        print(f"[WARNING] Reached right margin, may overflow page")
+                        print(f"[WARNING] No space for column {column_number}, stopping early.")
+                        # End section for this partial column (nothing rendered yet)
+                        if track_annotations:
+                            self.cipher_renderer.end_section(block_id * 100 + column_number)
+                        break
 
                 # Render with variations and annotation tracking
                 # Calculate max column width (leave space for column gap)
@@ -393,6 +397,7 @@ class CipherImageGenerator:
         font_path: Optional[str] = None,
         use_variations: bool = True,
         track_annotations: bool = True,
+        code_table: Optional[dict] = None,
     ) -> int:
         """Render a homophonic code table on *img*.
 
@@ -404,6 +409,8 @@ class CipherImageGenerator:
             font_path: Path to handwritten TTF font; None uses system fallback.
             use_variations: Whether to apply handwriting variation effects.
             track_annotations: Whether to record COCO bounding boxes.
+            code_table: Pre-generated symbol→codes mapping for stable previews.
+                If None, a fresh random assignment is generated.
 
         Returns:
             Y position below the last rendered row block.
@@ -421,6 +428,9 @@ class CipherImageGenerator:
 
         next_y = table_gen.render_table(
             img, start_x, start_y, font_path,
+            code_table=code_table,
+            paper_width=self.paper_config.width,
+            paper_height=self.paper_config.height,
             track_annotations=track_annotations,
         )
 
