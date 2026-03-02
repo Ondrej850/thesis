@@ -164,7 +164,7 @@ class TableCodesGenerator:
                 break
 
             current_y = self._render_row_block(
-                img, chunk, code_table, x, current_y, col_w, font_path, track_annotations
+                img, chunk, code_table, x, current_y, col_w, font_path, font, track_annotations
             )
             current_y += self.spacing * 3  # Extra gap between row blocks
 
@@ -236,6 +236,7 @@ class TableCodesGenerator:
         y: int,
         col_w: int,
         font_path: Optional[str],
+        font: ImageFont.FreeTypeFont,
         track_annotations: bool,
     ) -> int:
         """Render one horizontal block: header row + separator + code rows + closing line.
@@ -250,8 +251,10 @@ class TableCodesGenerator:
         current_y = y
         for col_idx, sym in enumerate(symbols):
             col_x = x + col_idx * col_w
+            text_w, _ = self._measure_text(draw, sym, font)
+            centered_x = col_x + (col_w - text_w) // 2
             self._text_renderer.render_varied_text(
-                img, sym, col_x, current_y,
+                img, sym, centered_x, current_y,
                 font_path or "", self.font_size, self.BASE_COLOR,
                 track_annotations=track_annotations,
             )
@@ -269,8 +272,11 @@ class TableCodesGenerator:
                 if code_row_idx >= len(codes):
                     continue
                 col_x = x + col_idx * col_w
+                code_str = str(codes[code_row_idx])
+                text_w, _ = self._measure_text(draw, code_str, font)
+                centered_x = col_x + (col_w - text_w) // 2
                 self._text_renderer.render_varied_text(
-                    img, str(codes[code_row_idx]), col_x, current_y,
+                    img, code_str, centered_x, current_y,
                     font_path or "", self.font_size, self.BASE_COLOR,
                     track_annotations=track_annotations,
                 )

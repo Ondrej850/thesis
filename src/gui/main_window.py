@@ -185,6 +185,15 @@ class CipherGeneratorGUI:
         )
         self._cp_entries_spinbox.grid(row=3, column=1, sticky=tk.W, pady=2)
 
+        # Font size (local to column pairs)
+        self._cp_label_font_size = ttk.Label(frame, text="Font Size:")
+        self._cp_label_font_size.grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.cp_font_size_var = tk.IntVar(value=14)
+        self._cp_font_size_spinbox = ttk.Spinbox(
+            frame, from_=8, to=36, textvariable=self.cp_font_size_var, width=10,
+        )
+        self._cp_font_size_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
+
     def _on_column_pairs_toggle(self):
         """Enable/disable column-pairs sub-controls based on checkbox."""
         state = "readonly" if self.include_column_pairs_var.get() else "disabled"
@@ -192,6 +201,7 @@ class CipherGeneratorGUI:
         self._cp_cipher_combo.configure(state=state)
         self._cp_key_combo.configure(state=state)
         self._cp_entries_spinbox.configure(state=spin_state)
+        self._cp_font_size_spinbox.configure(state=spin_state)
 
     def setup_font_config(self, parent):
         """Setup font configuration section"""
@@ -224,37 +234,31 @@ class CipherGeneratorGUI:
                                font=('TkDefaultFont', 8), foreground='gray')
         help_label.grid(row=1, column=2, sticky=tk.W, padx=5)
 
-        # Font size
-        ttk.Label(frame, text="Font Size:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.font_size_var = tk.IntVar(value=14)
-        ttk.Spinbox(frame, from_=10, to=24, textvariable=self.font_size_var,
-                    width=10).grid(row=2, column=1, sticky=tk.W, pady=2)
-
         # Column separator
-        ttk.Label(frame, text="Column Separator:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Column Separator:").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.col_sep_var = tk.StringVar(value="line")
         col_seps = ['none', 'line', 'double_line']
         ttk.Combobox(frame, textvariable=self.col_sep_var, values=col_seps,
-                     state='readonly', width=25).grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
+                     state='readonly', width=25).grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Key separator
-        ttk.Label(frame, text="Key Separator:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Key Separator:").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.key_sep_var = tk.StringVar(value="dashes")
         key_seps = ['dots', 'dashes', 'none']
         ttk.Combobox(frame, textvariable=self.key_sep_var, values=key_seps,
-                     state='readonly', width=25).grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+                     state='readonly', width=25).grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Dash count
-        ttk.Label(frame, text="Dash Count:").grid(row=5, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Dash Count:").grid(row=4, column=0, sticky=tk.W, pady=2)
         self.dash_count_var = tk.IntVar(value=3)
         ttk.Spinbox(frame, from_=1, to=10, textvariable=self.dash_count_var,
-                    width=10).grid(row=5, column=1, sticky=tk.W, pady=2)
+                    width=10).grid(row=4, column=1, sticky=tk.W, pady=2)
 
         # Spacing
-        ttk.Label(frame, text="Line Spacing:").grid(row=6, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Line Spacing:").grid(row=5, column=0, sticky=tk.W, pady=2)
         self.spacing_var = tk.IntVar(value=8)
         ttk.Spinbox(frame, from_=5, to=20, textvariable=self.spacing_var,
-                    width=10).grid(row=6, column=1, sticky=tk.W, pady=2)
+                    width=10).grid(row=5, column=1, sticky=tk.W, pady=2)
 
     def setup_table_codes_config(self, parent):
         """Setup table codes configuration section (section 4)."""
@@ -333,6 +337,15 @@ class CipherGeneratorGUI:
         )
         self._tc_vlines_check.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=2)
 
+        # Font size (local to table codes)
+        self._tc_label_font_size = ttk.Label(frame, text="Font Size:")
+        self._tc_label_font_size.grid(row=7, column=0, sticky=tk.W, pady=2)
+        self.table_font_size_var = tk.IntVar(value=14)
+        self._tc_font_size_spinbox = ttk.Spinbox(
+            frame, from_=8, to=36, textvariable=self.table_font_size_var, width=10,
+        )
+        self._tc_font_size_spinbox.grid(row=7, column=1, sticky=tk.W, pady=2)
+
         # Sync enabled/disabled states on startup
         self._on_table_codes_toggle()
 
@@ -346,6 +359,7 @@ class CipherGeneratorGUI:
         self._tc_boost_check.configure(state="normal" if enabled else "disabled")
         self._tc_cols_spinbox.configure(state=spin_state)
         self._tc_vlines_check.configure(state="normal" if enabled else "disabled")
+        self._tc_font_size_spinbox.configure(state=spin_state)
         # Also honour the boost-spinbox state within the enabled section
         if enabled:
             self._on_table_boost_toggle()
@@ -403,8 +417,10 @@ class CipherGeneratorGUI:
         # Font config listeners (visual only - use cached entries)
         self.font_selection_var.trace_add('write', self._on_visual_config_change)
         self.variation_level_var.trace_add('write', self._on_visual_config_change)
-        self.font_size_var.trace_add('write', self._on_visual_config_change)
         self.col_sep_var.trace_add('write', self._on_visual_config_change)
+        # Per-section font sizes (visual only)
+        self.cp_font_size_var.trace_add('write', self._on_visual_config_change)
+        self.table_font_size_var.trace_add('write', self._on_visual_config_change)
         self.key_sep_var.trace_add('write', self._on_visual_config_change)
         self.dash_count_var.trace_add('write', self._on_visual_config_change)
         self.spacing_var.trace_add('write', self._on_visual_config_change)
@@ -527,7 +543,7 @@ class CipherGeneratorGUI:
 
             font_config = FontConfig(
                 font_name="custom",
-                font_size=self.font_size_var.get(),
+                font_size=self.cp_font_size_var.get(),
                 column_separator=self.col_sep_var.get(),
                 key_separator=self.key_sep_var.get(),
                 dash_count=self.dash_count_var.get(),
@@ -581,6 +597,7 @@ class CipherGeneratorGUI:
                     use_variations=use_variations,
                     track_annotations=True,
                     code_table=code_table,
+                    font_size=self.table_font_size_var.get(),
                 )
                 # Add a gap between table and column pairs
                 current_y += self.spacing_var.get() * 4
@@ -730,7 +747,7 @@ class CipherGeneratorGUI:
         # Generate fresh code table
         gen = TableCodesGenerator(
             config=table_config,
-            font_size=self.font_size_var.get(),
+            font_size=self.table_font_size_var.get(),
             spacing=self.spacing_var.get(),
         )
         code_table = gen.generate_code_table()

@@ -398,6 +398,7 @@ class CipherImageGenerator:
         use_variations: bool = True,
         track_annotations: bool = True,
         code_table: Optional[dict] = None,
+        font_size: Optional[int] = None,
     ) -> int:
         """Render a homophonic code table on *img*.
 
@@ -419,9 +420,10 @@ class CipherImageGenerator:
             font_path = self._get_fallback_font_path()
 
         variation_level = "medium" if use_variations else "none"
+        actual_font_size = font_size if font_size is not None else self.font_config.font_size
         table_gen = TableCodesGenerator(
             config=table_config,
-            font_size=self.font_config.font_size,
+            font_size=actual_font_size,
             spacing=self.font_config.spacing,
             variation_level=variation_level,
         )
