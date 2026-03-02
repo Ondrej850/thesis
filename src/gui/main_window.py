@@ -319,14 +319,18 @@ class CipherGeneratorGUI:
         )
         self._common_codes_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
 
-        # Symbols per row
-        self._tc_label_cols = ttk.Label(frame, text="Symbols per Row:")
-        self._tc_label_cols.grid(row=5, column=0, sticky=tk.W, pady=2)
-        self.table_cols_per_row_var = tk.IntVar(value=13)
-        self._tc_cols_spinbox = ttk.Spinbox(
-            frame, from_=5, to=26, textvariable=self.table_cols_per_row_var, width=10,
+        # Column spacing
+        self._tc_label_spacing = ttk.Label(frame, text="Column Spacing:")
+        self._tc_label_spacing.grid(row=5, column=0, sticky=tk.W, pady=2)
+        self.table_col_spacing_var = tk.IntVar(value=10)
+        self._tc_col_spacing_spinbox = ttk.Spinbox(
+            frame, from_=2, to=60, textvariable=self.table_col_spacing_var, width=10,
         )
-        self._tc_cols_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
+        self._tc_col_spacing_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
+        ttk.Label(
+            frame, text="px extra per column (lower = tighter)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=5, column=2, sticky=tk.W, padx=5)
 
         # Vertical column lines
         self.table_vertical_lines_var = tk.BooleanVar(value=True)
@@ -357,7 +361,7 @@ class CipherGeneratorGUI:
         self._tc_content_combo.configure(state=combo_state)
         self._tc_codes_spinbox.configure(state=spin_state)
         self._tc_boost_check.configure(state="normal" if enabled else "disabled")
-        self._tc_cols_spinbox.configure(state=spin_state)
+        self._tc_col_spacing_spinbox.configure(state=spin_state)
         self._tc_vlines_check.configure(state="normal" if enabled else "disabled")
         self._tc_font_size_spinbox.configure(state=spin_state)
         # Also honour the boost-spinbox state within the enabled section
@@ -434,8 +438,8 @@ class CipherGeneratorGUI:
         self.table_num_codes_var.trace_add('write', self._on_table_content_change)
         self.table_common_boost_var.trace_add('write', self._on_table_content_change)
         self.table_common_codes_var.trace_add('write', self._on_table_content_change)
-        # Symbols-per-row and vertical lines only affect layout/visuals
-        self.table_cols_per_row_var.trace_add('write', self._on_visual_config_change)
+        # Column spacing and vertical lines only affect layout/visuals
+        self.table_col_spacing_var.trace_add('write', self._on_visual_config_change)
         self.table_vertical_lines_var.trace_add('write', self._on_visual_config_change)
 
     def _on_visual_config_change(self, *args):
@@ -720,8 +724,8 @@ class CipherGeneratorGUI:
             num_codes=self.table_num_codes_var.get(),
             use_common_boost=self.table_common_boost_var.get(),
             common_codes=self.table_common_codes_var.get(),
-            max_cols_per_row=self.table_cols_per_row_var.get(),
             draw_vertical_lines=self.table_vertical_lines_var.get(),
+            column_spacing=self.table_col_spacing_var.get(),
         )
 
     def _get_or_generate_code_table(self, table_config: TableCodesConfig) -> dict:

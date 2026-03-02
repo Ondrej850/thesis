@@ -30,8 +30,8 @@ class TableCodesConfig:
     num_codes: int = 3                  # Default codes per symbol
     use_common_boost: bool = True       # Give extra codes to common English letters
     common_codes: int = 5               # Codes for common letters (E,T,A,O,I,N,S,H,R)
-    max_cols_per_row: int = 13          # Max symbols per row (0 = auto-fit to page)
     draw_vertical_lines: bool = True    # Draw vertical separator lines between columns
+    column_spacing: int = 10            # Extra px added to each column beyond widest text
 
     def get_symbols(self) -> List[str]:
         """Return the ordered list of symbols for the selected content type."""

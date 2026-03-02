@@ -136,11 +136,9 @@ class TableCodesGenerator:
         font = self._load_font(font_path, self.font_size)
         col_w = self._compute_column_width(draw, symbols, code_table, font)
 
-        # ── Cap columns-per-row to fit within available paper width ──────
+        # ── Auto-fit columns to available paper width ────────────────────
         available_width = paper_width - x - right_margin
-        max_cols_from_width = max(1, available_width // col_w)
-        user_cols = self.config.max_cols_per_row if self.config.max_cols_per_row > 0 else 26
-        cols = min(user_cols, max_cols_from_width)
+        cols = max(1, available_width // col_w)
 
         row_chunks: List[List[str]] = [
             symbols[i: i + cols] for i in range(0, len(symbols), cols)
@@ -225,7 +223,7 @@ class TableCodesGenerator:
             for code in code_table[sym]:
                 w, _ = self._measure_text(draw, str(code), font)
                 max_w = max(max_w, w)
-        return int(max_w * 1.6)  # 60 % padding for comfortable spacing
+        return max_w + self.config.column_spacing  # text width + user-controlled spacing
 
     def _render_row_block(
         self,
