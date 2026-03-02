@@ -328,9 +328,10 @@ class CipherGeneratorGUI:
         )
         self._tc_col_spacing_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
         ttk.Label(
-            frame, text="px extra per column (lower = tighter)",
+            frame,
+            text="px extra per column (lower = tighter)",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=5, column=2, sticky=tk.W, padx=5)
+        ).grid(row=5, column=3, sticky=tk.W, padx=5)
 
         # Vertical column lines
         self.table_vertical_lines_var = tk.BooleanVar(value=True)
