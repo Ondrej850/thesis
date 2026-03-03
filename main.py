@@ -11,6 +11,16 @@ if hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_pref
     os.environ['TCL_LIBRARY'] = r"C:\Users\opale\AppData\Local\Programs\Python\Python311\tcl\tcl8.6"
     os.environ['TK_LIBRARY'] = r"C:\Users\opale\AppData\Local\Programs\Python\Python311\tcl\tk8.6"
 
+if sys.platform == "win32":
+    try:
+        import ctypes
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    except Exception:
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+
 import tkinter as tk
 
 from src.gui.main_window import CipherGeneratorGUI
