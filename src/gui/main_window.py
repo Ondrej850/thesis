@@ -100,6 +100,7 @@ class CipherGeneratorGUI:
         self.setup_cipher_config(config_frame)
         self.setup_font_config(config_frame)
         self.setup_table_codes_config(config_frame)
+        self.setup_layout_config(config_frame)
         self.setup_preview(preview_frame)
         self.setup_buttons(main_frame)
 
@@ -376,6 +377,137 @@ class CipherGeneratorGUI:
         state = "normal" if self.table_common_boost_var.get() else "disabled"
         self._common_codes_spinbox.configure(state=state)
 
+    # ------------------------------------------------------------------
+    # Pixel ↔ centimetre helpers  (96 DPI assumed)
+    # ------------------------------------------------------------------
+    PX_PER_CM = 37.795275591  # 96 DPI
+
+    @staticmethod
+    def _px_to_cm(px: int) -> float:
+        """Convert pixels to centimetres (96 DPI)."""
+        return px / CipherGeneratorGUI.PX_PER_CM
+
+    @staticmethod
+    def _cm_to_px(cm: float) -> int:
+        """Convert centimetres to pixels (96 DPI)."""
+        return int(round(cm * CipherGeneratorGUI.PX_PER_CM))
+
+    def setup_layout_config(self, parent):
+        """Setup layout & ink configuration section (section 5)."""
+        frame = ttk.LabelFrame(parent, text="5. Layout & Ink", padding="5")
+        frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame.columnconfigure(1, weight=1)
+
+        # ── Start position X ──────────────────────────────────────────
+        ttk.Label(frame, text="Start X (px):").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.start_x_var = tk.IntVar(value=50)
+        self._start_x_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.start_x_var, width=10,
+        )
+        self._start_x_spinbox.grid(row=0, column=1, sticky=tk.W, pady=2)
+        self._start_x_cm_label = ttk.Label(frame, text="≈ 1.32 cm from left",
+                                           font=("TkDefaultFont", 8), foreground="gray")
+        self._start_x_cm_label.grid(row=0, column=2, sticky=tk.W, padx=5)
+
+        # ── Start position Y ──────────────────────────────────────────
+        ttk.Label(frame, text="Start Y (px):").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self.start_y_var = tk.IntVar(value=50)
+        self._start_y_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.start_y_var, width=10,
+        )
+        self._start_y_spinbox.grid(row=1, column=1, sticky=tk.W, pady=2)
+        self._start_y_cm_label = ttk.Label(frame, text="≈ 1.32 cm from top",
+                                           font=("TkDefaultFont", 8), foreground="gray")
+        self._start_y_cm_label.grid(row=1, column=2, sticky=tk.W, padx=5)
+
+        # ── Right margin ──────────────────────────────────────────────
+        ttk.Label(frame, text="Right Margin (px):").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.right_margin_var = tk.IntVar(value=50)
+        self._right_margin_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.right_margin_var, width=10,
+        )
+        self._right_margin_spinbox.grid(row=2, column=1, sticky=tk.W, pady=2)
+        self._right_margin_cm_label = ttk.Label(frame, text="≈ 1.32 cm from right",
+                                                font=("TkDefaultFont", 8), foreground="gray")
+        self._right_margin_cm_label.grid(row=2, column=2, sticky=tk.W, padx=5)
+
+        # ── Bottom margin ─────────────────────────────────────────────
+        ttk.Label(frame, text="Bottom Margin (px):").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.bottom_margin_var = tk.IntVar(value=50)
+        self._bottom_margin_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.bottom_margin_var, width=10,
+        )
+        self._bottom_margin_spinbox.grid(row=3, column=1, sticky=tk.W, pady=2)
+        self._bottom_margin_cm_label = ttk.Label(frame, text="≈ 1.32 cm from bottom",
+                                                 font=("TkDefaultFont", 8), foreground="gray")
+        self._bottom_margin_cm_label.grid(row=3, column=2, sticky=tk.W, padx=5)
+
+        # ── Ink color ─────────────────────────────────────────────────
+        ttk.Label(frame, text="Ink Color:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.ink_color_var = tk.StringVar(value="dark_brown")
+        ink_colors = [
+            "dark_brown",      # (44, 36, 22)  – original
+            "black",           # (15, 10, 10)
+            "faded_brown",     # (80, 65, 45)
+            "iron_gall",       # (35, 30, 50)  – blueish-black
+            "sepia",           # (90, 60, 30)
+            "charcoal",        # (50, 48, 46)
+        ]
+        self._ink_color_combo = ttk.Combobox(
+            frame, textvariable=self.ink_color_var,
+            values=ink_colors, state="readonly", width=25,
+        )
+        self._ink_color_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Ink color swatch label (preview)
+        self._ink_swatch_label = ttk.Label(frame, text="■ (44, 36, 22)",
+                                           font=("TkDefaultFont", 8), foreground="gray")
+        self._ink_swatch_label.grid(row=4, column=2, sticky=tk.W, padx=5)
+
+    # ------------------------------------------------------------------
+    # Ink colour mapping
+    # ------------------------------------------------------------------
+    INK_COLOR_MAP = {
+        "dark_brown":  (44, 36, 22),
+        "black":       (15, 10, 10),
+        "faded_brown": (80, 65, 45),
+        "iron_gall":   (35, 30, 50),
+        "sepia":       (90, 60, 30),
+        "charcoal":    (50, 48, 46),
+    }
+
+    def _get_ink_color_rgb(self) -> tuple:
+        """Return the (R, G, B) tuple for the currently selected ink colour."""
+        return self.INK_COLOR_MAP.get(self.ink_color_var.get(), (44, 36, 22))
+
+    def _update_cm_labels(self, *_args):
+        """Refresh the ≈ cm helper labels next to the spinboxes."""
+        try:
+            sx = self.start_x_var.get()
+            self._start_x_cm_label.config(text=f"≈ {self._px_to_cm(sx):.2f} cm from left")
+        except tk.TclError:
+            pass
+        try:
+            sy = self.start_y_var.get()
+            self._start_y_cm_label.config(text=f"≈ {self._px_to_cm(sy):.2f} cm from top")
+        except tk.TclError:
+            pass
+        try:
+            rm = self.right_margin_var.get()
+            self._right_margin_cm_label.config(text=f"≈ {self._px_to_cm(rm):.2f} cm from right")
+        except tk.TclError:
+            pass
+        try:
+            bm = self.bottom_margin_var.get()
+            self._bottom_margin_cm_label.config(text=f"≈ {self._px_to_cm(bm):.2f} cm from bottom")
+        except tk.TclError:
+            pass
+        try:
+            rgb = self._get_ink_color_rgb()
+            self._ink_swatch_label.config(text=f"■ {rgb}")
+        except tk.TclError:
+            pass
+
     def setup_preview(self, parent):
         """Setup preview area - fits entire A4 page without scrolling"""
         # Create canvas frame
@@ -443,8 +575,20 @@ class CipherGeneratorGUI:
         self.table_col_spacing_var.trace_add('write', self._on_visual_config_change)
         self.table_vertical_lines_var.trace_add('write', self._on_visual_config_change)
 
+        # Layout & ink listeners (visual only)
+        self.start_x_var.trace_add('write', self._on_layout_config_change)
+        self.start_y_var.trace_add('write', self._on_layout_config_change)
+        self.right_margin_var.trace_add('write', self._on_layout_config_change)
+        self.bottom_margin_var.trace_add('write', self._on_layout_config_change)
+        self.ink_color_var.trace_add('write', self._on_layout_config_change)
+
     def _on_visual_config_change(self, *args):
         """Called when visual config changes - uses all cached data"""
+        self._schedule_debounced_regenerate()
+
+    def _on_layout_config_change(self, *args):
+        """Called when layout/ink config changes - update cm labels and re-render."""
+        self._update_cm_labels()
         self._schedule_debounced_regenerate()
 
     def _on_paper_config_change(self, *args):
@@ -589,20 +733,28 @@ class CipherGeneratorGUI:
             include_table = self.include_table_codes_var.get()
             include_pairs = self.include_column_pairs_var.get()
 
+            # Read layout settings
+            start_x = self.start_x_var.get()
+            start_y = self.start_y_var.get()
+            right_margin = self.right_margin_var.get()
+            bottom_margin = self.bottom_margin_var.get()
+            ink_color = self._get_ink_color_rgb()
+
             # Track current Y so table and pairs stack vertically on same page
-            current_y = 50
+            current_y = start_y
 
             # ── Table codes (rendered first, at top of page) ─────────────
             if include_table:
                 table_config = self._build_table_config()
                 code_table = self._get_or_generate_code_table(table_config)
                 current_y = generator.render_table_codes(
-                    img, table_config, 50, current_y,
+                    img, table_config, start_x, current_y,
                     font_path=selected_font_path,
                     use_variations=use_variations,
                     track_annotations=True,
                     code_table=code_table,
                     font_size=self.table_font_size_var.get(),
+                    ink_color=ink_color,
                 )
                 # Add a gap between table and column pairs
                 current_y += self.spacing_var.get() * 4
@@ -611,11 +763,14 @@ class CipherGeneratorGUI:
             if include_pairs:
                 cipher_entries = self._get_cipher_entries()
                 generator.render_cipher_text(
-                    img, cipher_entries, 50, current_y,
+                    img, cipher_entries, start_x, current_y,
                     block_id=1,
                     font_path=selected_font_path,
                     use_variations=use_variations,
                     track_annotations=True,
+                    right_margin=right_margin,
+                    bottom_margin=bottom_margin,
+                    ink_color=ink_color,
                 )
 
             # Mark font as used (for statistics)

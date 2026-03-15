@@ -60,11 +60,14 @@ class TableCodesGenerator:
         font_size: int,
         spacing: int,
         variation_level: str = "medium",
+        ink_color: Optional[Tuple[int, int, int]] = None,
     ) -> None:
         self.config = config
         self.font_size = font_size
         self.spacing = spacing
         self._text_renderer = VariatedTextRenderer(variation_level)
+        if ink_color is not None:
+            self.BASE_COLOR = ink_color
 
     # ------------------------------------------------------------------
     # Public API
@@ -259,7 +262,7 @@ class TableCodesGenerator:
         current_y += row_h
 
         # ── 2. Separator line below header ──────────────────────────────
-        draw.line([(x, current_y), (line_x_end, current_y)], fill="#2C2416", width=1)
+        draw.line([(x, current_y), (line_x_end, current_y)], fill=self.BASE_COLOR, width=1)
         current_y += 4
 
         # ── 3. Code rows ─────────────────────────────────────────────────
@@ -286,7 +289,7 @@ class TableCodesGenerator:
             block_bottom = current_y  # just before the closing separator line
             for col_idx in range(len(symbols) + 1):
                 vx = x + col_idx * col_w
-                draw.line([(vx, block_top), (vx, block_bottom)], fill="#2C2416", width=1)
+                draw.line([(vx, block_top), (vx, block_bottom)], fill=self.BASE_COLOR, width=1)
 
         # ── 5. Build geometry-based COCO annotations ─────────────────────
         if track_annotations:
@@ -318,7 +321,7 @@ class TableCodesGenerator:
                 self._text_renderer.collected_section_bboxes.append(block_bbox)
 
         # ── 5. Closing separator line ────────────────────────────────────
-        draw.line([(x, current_y), (line_x_end, current_y)], fill="#2C2416", width=1)
+        draw.line([(x, current_y), (line_x_end, current_y)], fill=self.BASE_COLOR, width=1)
         current_y += 2
 
         return current_y

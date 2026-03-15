@@ -532,13 +532,14 @@ class CipherEntryRenderer:
                             column_separator: str = "none",
                             paper_width: int = 800,
                             track_annotations: bool = False,
-                            max_column_width: int = 300) -> float:
+                            max_column_width: int = 300,
+                            ink_color: tuple = None) -> float:
         """
         Render a cipher entry (text + separator + key) with variations
 
         Returns: y position for next line
         """
-        base_color = (44, 36, 22)  # Dark brown ink
+        base_color = ink_color if ink_color is not None else (44, 36, 22)
 
         # Track which elements belong to this entry
         elements_start_idx = len(self._text_renderer.collected_element_bboxes)
@@ -600,13 +601,13 @@ class CipherEntryRenderer:
 
             if column_separator == 'line':
                 draw.line([(x, separator_y), (x + line_width, separator_y)],
-                          fill='#2C2416', width=1)
+                          fill=base_color, width=1)
             elif column_separator == 'double_line':
                 draw.line([(x, separator_y), (x + line_width, separator_y)],
-                          fill='#2C2416', width=1)
+                          fill=base_color, width=1)
                 spacing = max(2, int(base_size * 0.15))  # Space between lines scales with font
                 draw.line([(x, separator_y + spacing), (x + line_width, separator_y + spacing)],
-                          fill='#2C2416', width=1)
+                          fill=base_color, width=1)
 
             # Add extra space after separator (scales with font size)
             next_y += separator_gap * 2
