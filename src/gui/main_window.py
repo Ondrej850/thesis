@@ -139,7 +139,7 @@ class CipherGeneratorGUI:
         config_outer.rowconfigure(0, weight=1)
         config_outer.columnconfigure(0, weight=1)
 
-        self._config_canvas = tk.Canvas(config_outer, highlightthickness=0, width=420)
+        self._config_canvas = tk.Canvas(config_outer, highlightthickness=0)
         self._config_canvas.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
 
         config_scrollbar = ttk.Scrollbar(config_outer, orient=tk.VERTICAL,
@@ -149,6 +149,7 @@ class CipherGeneratorGUI:
 
         # Inner frame that holds all sections — lives inside the canvas
         config_frame = ttk.Frame(self._config_canvas)
+        config_frame.columnconfigure(0, weight=1)
         self._config_canvas_window = self._config_canvas.create_window(
             (0, 0), window=config_frame, anchor=tk.NW,
         )
@@ -158,12 +159,13 @@ class CipherGeneratorGUI:
             self._config_canvas.configure(scrollregion=self._config_canvas.bbox("all"))
 
         def _on_canvas_configure(event):
+            # Stretch inner frame to fill canvas width
             self._config_canvas.itemconfigure(self._config_canvas_window, width=event.width)
 
         config_frame.bind("<Configure>", _on_config_frame_configure)
         self._config_canvas.bind("<Configure>", _on_canvas_configure)
 
-        # Mouse-wheel scrolling
+        # Mouse-wheel scrolling (only when pointer is over the config panel)
         def _on_mousewheel(event):
             self._config_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
@@ -173,9 +175,19 @@ class CipherGeneratorGUI:
             elif event.num == 5:
                 self._config_canvas.yview_scroll(3, "units")
 
-        self._config_canvas.bind_all("<MouseWheel>", _on_mousewheel)       # Windows / macOS
-        self._config_canvas.bind_all("<Button-4>", _on_mousewheel_linux)   # Linux scroll up
-        self._config_canvas.bind_all("<Button-5>", _on_mousewheel_linux)   # Linux scroll down
+        def _bind_wheel(event):
+            self._config_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            self._config_canvas.bind_all("<Button-4>", _on_mousewheel_linux)
+            self._config_canvas.bind_all("<Button-5>", _on_mousewheel_linux)
+
+        def _unbind_wheel(event):
+            self._config_canvas.unbind_all("<MouseWheel>")
+            self._config_canvas.unbind_all("<Button-4>")
+            self._config_canvas.unbind_all("<Button-5>")
+
+        # Bind wheel only when mouse enters config area, unbind when it leaves
+        config_outer.bind("<Enter>", _bind_wheel)
+        config_outer.bind("<Leave>", _unbind_wheel)
 
         # React to section collapse/expand
         config_frame.bind_all("<<SectionToggled>>", _on_config_frame_configure)
