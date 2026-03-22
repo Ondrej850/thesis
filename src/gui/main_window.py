@@ -25,6 +25,49 @@ from src.annotations.coco_manager import COCOAnnotationManager
 from src.database.font_manager import FontManager
 
 
+class CollapsibleSection(ttk.Frame):
+    """A LabelFrame-like section with a clickable header to collapse/expand."""
+
+    def __init__(self, parent, title: str, expanded: bool = True, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.columnconfigure(0, weight=1)
+
+        self._expanded = tk.BooleanVar(value=expanded)
+
+        # Header row: toggle button + label
+        header = ttk.Frame(self)
+        header.grid(row=0, column=0, sticky=(tk.W, tk.E))
+        header.columnconfigure(1, weight=1)
+
+        self._toggle_btn = ttk.Button(
+            header, text="▼" if expanded else "▶", width=2,
+            command=self._toggle,
+        )
+        self._toggle_btn.grid(row=0, column=0, padx=(0, 4))
+
+        self._title_label = ttk.Label(header, text=title, font=("TkDefaultFont", 9, "bold"))
+        self._title_label.grid(row=0, column=1, sticky=tk.W)
+        self._title_label.bind("<Button-1>", lambda _e: self._toggle())
+
+        # Content frame (this is what callers populate)
+        self.content = ttk.LabelFrame(self, text="", padding="5")
+        self.content.columnconfigure(1, weight=1)
+        if expanded:
+            self.content.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(2, 0))
+
+    def _toggle(self):
+        if self._expanded.get():
+            self.content.grid_forget()
+            self._expanded.set(False)
+            self._toggle_btn.config(text="▶")
+        else:
+            self.content.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(2, 0))
+            self._expanded.set(True)
+            self._toggle_btn.config(text="▼")
+        # Notify scrollable canvas to recalculate scroll region
+        self.event_generate("<<SectionToggled>>")
+
+
 class CipherGeneratorGUI:
     """Main GUI application"""
 
@@ -87,9 +130,52 @@ class CipherGeneratorGUI:
         main_frame.columnconfigure(1, weight=2)
         main_frame.rowconfigure(0, weight=1)
 
-        # Left panel - Configuration
-        config_frame = ttk.LabelFrame(main_frame, text="Configuration", padding="10")
-        config_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        # Left panel - Scrollable configuration
+        config_outer = ttk.LabelFrame(main_frame, text="Configuration", padding="5")
+        config_outer.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        config_outer.rowconfigure(0, weight=1)
+        config_outer.columnconfigure(0, weight=1)
+
+        self._config_canvas = tk.Canvas(config_outer, highlightthickness=0, width=420)
+        self._config_canvas.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+
+        config_scrollbar = ttk.Scrollbar(config_outer, orient=tk.VERTICAL,
+                                         command=self._config_canvas.yview)
+        config_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self._config_canvas.configure(yscrollcommand=config_scrollbar.set)
+
+        # Inner frame that holds all sections — lives inside the canvas
+        config_frame = ttk.Frame(self._config_canvas)
+        self._config_canvas_window = self._config_canvas.create_window(
+            (0, 0), window=config_frame, anchor=tk.NW,
+        )
+
+        # Keep canvas scroll region and inner-frame width in sync
+        def _on_config_frame_configure(_event=None):
+            self._config_canvas.configure(scrollregion=self._config_canvas.bbox("all"))
+
+        def _on_canvas_configure(event):
+            self._config_canvas.itemconfigure(self._config_canvas_window, width=event.width)
+
+        config_frame.bind("<Configure>", _on_config_frame_configure)
+        self._config_canvas.bind("<Configure>", _on_canvas_configure)
+
+        # Mouse-wheel scrolling
+        def _on_mousewheel(event):
+            self._config_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _on_mousewheel_linux(event):
+            if event.num == 4:
+                self._config_canvas.yview_scroll(-3, "units")
+            elif event.num == 5:
+                self._config_canvas.yview_scroll(3, "units")
+
+        self._config_canvas.bind_all("<MouseWheel>", _on_mousewheel)       # Windows / macOS
+        self._config_canvas.bind_all("<Button-4>", _on_mousewheel_linux)   # Linux scroll up
+        self._config_canvas.bind_all("<Button-5>", _on_mousewheel_linux)   # Linux scroll down
+
+        # React to section collapse/expand
+        config_frame.bind_all("<<SectionToggled>>", _on_config_frame_configure)
 
         # Right panel - Preview
         preview_frame = ttk.LabelFrame(main_frame, text="Preview", padding="10")
@@ -106,9 +192,9 @@ class CipherGeneratorGUI:
 
     def setup_paper_config(self, parent):
         """Setup paper configuration section"""
-        frame = ttk.LabelFrame(parent, text="1. Paper Configuration", padding="5")
-        frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "1. Paper Configuration")
+        section.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Aging level
         ttk.Label(frame, text="Aging Level:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -143,9 +229,9 @@ class CipherGeneratorGUI:
 
     def setup_cipher_config(self, parent):
         """Setup column-pairs cipher configuration section."""
-        frame = ttk.LabelFrame(parent, text="2. Column Pairs", padding="5")
-        frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "2. Column Pairs")
+        section.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Enable / disable checkbox
         self.include_column_pairs_var = tk.BooleanVar(value=True)
@@ -206,9 +292,9 @@ class CipherGeneratorGUI:
 
     def setup_font_config(self, parent):
         """Setup font configuration section"""
-        frame = ttk.LabelFrame(parent, text="3. Font Configuration", padding="5")
-        frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "3. Font Configuration")
+        section.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Font selection
         ttk.Label(frame, text="Font:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -263,9 +349,9 @@ class CipherGeneratorGUI:
 
     def setup_table_codes_config(self, parent):
         """Setup table codes configuration section (section 4)."""
-        frame = ttk.LabelFrame(parent, text="4. Table Codes", padding="5")
-        frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "4. Table Codes")
+        section.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Enable / disable checkbox (off by default — opt-in feature)
         self.include_table_codes_var = tk.BooleanVar(value=False)
@@ -394,9 +480,9 @@ class CipherGeneratorGUI:
 
     def setup_layout_config(self, parent):
         """Setup layout & ink configuration section (section 5)."""
-        frame = ttk.LabelFrame(parent, text="5. Layout & Ink", padding="5")
-        frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "5. Layout & Ink")
+        section.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # ── Start position X ──────────────────────────────────────────
         ttk.Label(frame, text="Start X (px):").grid(row=0, column=0, sticky=tk.W, pady=2)
