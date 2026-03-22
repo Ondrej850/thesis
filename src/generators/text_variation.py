@@ -262,9 +262,19 @@ class VariatedTextRenderer:
             paste_x = int(x + x_offset - temp_size // 2 + char_width // 2)
             paste_y = int(y + y_offset - temp_size // 2 + char_height // 2)
 
-            if 0 <= paste_x < temp_image.width - temp_size and \
-               0 <= paste_y < temp_image.height - temp_size:
-                temp_image.paste(char_img, (paste_x, paste_y), char_img)
+            # Compute the overlap between the temp image and the main image,
+            # then crop & paste only the visible portion.  This avoids silently
+            # dropping characters that are partially outside the image bounds.
+            src_x1 = max(0, -paste_x)
+            src_y1 = max(0, -paste_y)
+            src_x2 = min(char_img.width, temp_image.width - paste_x)
+            src_y2 = min(char_img.height, temp_image.height - paste_y)
+
+            if src_x2 > src_x1 and src_y2 > src_y1:
+                dst_x = max(0, paste_x)
+                dst_y = max(0, paste_y)
+                cropped = char_img.crop((src_x1, src_y1, src_x2, src_y2))
+                temp_image.paste(cropped, (dst_x, dst_y), cropped)
         else:
             draw.text((actual_x, actual_y), char, font=font, fill=ink_color)
 
@@ -532,13 +542,14 @@ class CipherEntryRenderer:
                             column_separator: str = "none",
                             paper_width: int = 800,
                             track_annotations: bool = False,
-                            max_column_width: int = 300) -> float:
+                            max_column_width: int = 300,
+                            ink_color: tuple = None) -> float:
         """
         Render a cipher entry (text + separator + key) with variations
 
         Returns: y position for next line
         """
-        base_color = (44, 36, 22)  # Dark brown ink
+        base_color = ink_color if ink_color is not None else (44, 36, 22)
 
         # Track which elements belong to this entry
         elements_start_idx = len(self._text_renderer.collected_element_bboxes)
@@ -600,13 +611,13 @@ class CipherEntryRenderer:
 
             if column_separator == 'line':
                 draw.line([(x, separator_y), (x + line_width, separator_y)],
-                          fill='#2C2416', width=1)
+                          fill=base_color, width=1)
             elif column_separator == 'double_line':
                 draw.line([(x, separator_y), (x + line_width, separator_y)],
-                          fill='#2C2416', width=1)
+                          fill=base_color, width=1)
                 spacing = max(2, int(base_size * 0.15))  # Space between lines scales with font
                 draw.line([(x, separator_y + spacing), (x + line_width, separator_y + spacing)],
-                          fill='#2C2416', width=1)
+                          fill=base_color, width=1)
 
             # Add extra space after separator (scales with font size)
             next_y += separator_gap * 2

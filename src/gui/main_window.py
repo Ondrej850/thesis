@@ -25,6 +25,49 @@ from src.annotations.coco_manager import COCOAnnotationManager
 from src.database.font_manager import FontManager
 
 
+class CollapsibleSection(ttk.Frame):
+    """A LabelFrame-like section with a clickable header to collapse/expand."""
+
+    def __init__(self, parent, title: str, expanded: bool = True, **kwargs):
+        super().__init__(parent, **kwargs)
+        self.columnconfigure(0, weight=1)
+
+        self._expanded = tk.BooleanVar(value=expanded)
+
+        # Header row: toggle button + label
+        header = ttk.Frame(self)
+        header.grid(row=0, column=0, sticky=(tk.W, tk.E))
+        header.columnconfigure(1, weight=1)
+
+        self._toggle_btn = ttk.Button(
+            header, text="▼" if expanded else "▶", width=2,
+            command=self._toggle,
+        )
+        self._toggle_btn.grid(row=0, column=0, padx=(0, 4))
+
+        self._title_label = ttk.Label(header, text=title, font=("TkDefaultFont", 9, "bold"))
+        self._title_label.grid(row=0, column=1, sticky=tk.W)
+        self._title_label.bind("<Button-1>", lambda _e: self._toggle())
+
+        # Content frame (this is what callers populate)
+        self.content = ttk.LabelFrame(self, text="", padding="5")
+        self.content.columnconfigure(1, weight=1)
+        if expanded:
+            self.content.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(2, 0))
+
+    def _toggle(self):
+        if self._expanded.get():
+            self.content.grid_forget()
+            self._expanded.set(False)
+            self._toggle_btn.config(text="▶")
+        else:
+            self.content.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(2, 0))
+            self._expanded.set(True)
+            self._toggle_btn.config(text="▼")
+        # Notify scrollable canvas to recalculate scroll region
+        self.event_generate("<<SectionToggled>>")
+
+
 class CipherGeneratorGUI:
     """Main GUI application"""
 
@@ -43,6 +86,9 @@ class CipherGeneratorGUI:
 
         self.preview_image = None
         self.current_generator = None  # Store generator instance
+
+        # Only auto-regenerate after the user has clicked "Generate Preview" once
+        self._preview_generated_once = False
 
         # Real-time preview: debounce timer for config changes
         self._debounce_timer = None
@@ -87,9 +133,64 @@ class CipherGeneratorGUI:
         main_frame.columnconfigure(1, weight=2)
         main_frame.rowconfigure(0, weight=1)
 
-        # Left panel - Configuration
-        config_frame = ttk.LabelFrame(main_frame, text="Configuration", padding="10")
-        config_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        # Left panel - Scrollable configuration
+        config_outer = ttk.LabelFrame(main_frame, text="Configuration", padding="5")
+        config_outer.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=5)
+        config_outer.rowconfigure(0, weight=1)
+        config_outer.columnconfigure(0, weight=1)
+
+        self._config_canvas = tk.Canvas(config_outer, highlightthickness=0)
+        self._config_canvas.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W, tk.E))
+
+        config_scrollbar = ttk.Scrollbar(config_outer, orient=tk.VERTICAL,
+                                         command=self._config_canvas.yview)
+        config_scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self._config_canvas.configure(yscrollcommand=config_scrollbar.set)
+
+        # Inner frame that holds all sections — lives inside the canvas
+        config_frame = ttk.Frame(self._config_canvas)
+        config_frame.columnconfigure(0, weight=1)
+        self._config_canvas_window = self._config_canvas.create_window(
+            (0, 0), window=config_frame, anchor=tk.NW,
+        )
+
+        # Keep canvas scroll region and inner-frame width in sync
+        def _on_config_frame_configure(_event=None):
+            self._config_canvas.configure(scrollregion=self._config_canvas.bbox("all"))
+
+        def _on_canvas_configure(event):
+            # Stretch inner frame to fill canvas width
+            self._config_canvas.itemconfigure(self._config_canvas_window, width=event.width)
+
+        config_frame.bind("<Configure>", _on_config_frame_configure)
+        self._config_canvas.bind("<Configure>", _on_canvas_configure)
+
+        # Mouse-wheel scrolling (only when pointer is over the config panel)
+        def _on_mousewheel(event):
+            self._config_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _on_mousewheel_linux(event):
+            if event.num == 4:
+                self._config_canvas.yview_scroll(-3, "units")
+            elif event.num == 5:
+                self._config_canvas.yview_scroll(3, "units")
+
+        def _bind_wheel(event):
+            self._config_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            self._config_canvas.bind_all("<Button-4>", _on_mousewheel_linux)
+            self._config_canvas.bind_all("<Button-5>", _on_mousewheel_linux)
+
+        def _unbind_wheel(event):
+            self._config_canvas.unbind_all("<MouseWheel>")
+            self._config_canvas.unbind_all("<Button-4>")
+            self._config_canvas.unbind_all("<Button-5>")
+
+        # Bind wheel only when mouse enters config area, unbind when it leaves
+        config_outer.bind("<Enter>", _bind_wheel)
+        config_outer.bind("<Leave>", _unbind_wheel)
+
+        # React to section collapse/expand
+        config_frame.bind_all("<<SectionToggled>>", _on_config_frame_configure)
 
         # Right panel - Preview
         preview_frame = ttk.LabelFrame(main_frame, text="Preview", padding="10")
@@ -100,14 +201,15 @@ class CipherGeneratorGUI:
         self.setup_cipher_config(config_frame)
         self.setup_font_config(config_frame)
         self.setup_table_codes_config(config_frame)
+        self.setup_layout_config(config_frame)
         self.setup_preview(preview_frame)
         self.setup_buttons(main_frame)
 
     def setup_paper_config(self, parent):
         """Setup paper configuration section"""
-        frame = ttk.LabelFrame(parent, text="1. Paper Configuration", padding="5")
-        frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "1. Paper Configuration")
+        section.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Aging level
         ttk.Label(frame, text="Aging Level:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -142,9 +244,9 @@ class CipherGeneratorGUI:
 
     def setup_cipher_config(self, parent):
         """Setup column-pairs cipher configuration section."""
-        frame = ttk.LabelFrame(parent, text="2. Column Pairs", padding="5")
-        frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "2. Column Pairs")
+        section.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Enable / disable checkbox
         self.include_column_pairs_var = tk.BooleanVar(value=True)
@@ -205,9 +307,9 @@ class CipherGeneratorGUI:
 
     def setup_font_config(self, parent):
         """Setup font configuration section"""
-        frame = ttk.LabelFrame(parent, text="3. Font Configuration", padding="5")
-        frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "3. Font Configuration")
+        section.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Font selection
         ttk.Label(frame, text="Font:").grid(row=0, column=0, sticky=tk.W, pady=2)
@@ -262,9 +364,9 @@ class CipherGeneratorGUI:
 
     def setup_table_codes_config(self, parent):
         """Setup table codes configuration section (section 4)."""
-        frame = ttk.LabelFrame(parent, text="4. Table Codes", padding="5")
-        frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame.columnconfigure(1, weight=1)
+        section = CollapsibleSection(parent, "4. Table Codes")
+        section.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
 
         # Enable / disable checkbox (off by default — opt-in feature)
         self.include_table_codes_var = tk.BooleanVar(value=False)
@@ -376,6 +478,137 @@ class CipherGeneratorGUI:
         state = "normal" if self.table_common_boost_var.get() else "disabled"
         self._common_codes_spinbox.configure(state=state)
 
+    # ------------------------------------------------------------------
+    # Pixel ↔ centimetre helpers  (96 DPI assumed)
+    # ------------------------------------------------------------------
+    PX_PER_CM = 37.795275591  # 96 DPI
+
+    @staticmethod
+    def _px_to_cm(px: int) -> float:
+        """Convert pixels to centimetres (96 DPI)."""
+        return px / CipherGeneratorGUI.PX_PER_CM
+
+    @staticmethod
+    def _cm_to_px(cm: float) -> int:
+        """Convert centimetres to pixels (96 DPI)."""
+        return int(round(cm * CipherGeneratorGUI.PX_PER_CM))
+
+    def setup_layout_config(self, parent):
+        """Setup layout & ink configuration section (section 5)."""
+        section = CollapsibleSection(parent, "5. Layout & Ink")
+        section.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        frame = section.content
+
+        # ── Start position X ──────────────────────────────────────────
+        ttk.Label(frame, text="Start X (px):").grid(row=0, column=0, sticky=tk.W, pady=2)
+        self.start_x_var = tk.IntVar(value=50)
+        self._start_x_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.start_x_var, width=10,
+        )
+        self._start_x_spinbox.grid(row=0, column=1, sticky=tk.W, pady=2)
+        self._start_x_cm_label = ttk.Label(frame, text="≈ 1.32 cm from left",
+                                           font=("TkDefaultFont", 8), foreground="gray")
+        self._start_x_cm_label.grid(row=0, column=2, sticky=tk.W, padx=5)
+
+        # ── Start position Y ──────────────────────────────────────────
+        ttk.Label(frame, text="Start Y (px):").grid(row=1, column=0, sticky=tk.W, pady=2)
+        self.start_y_var = tk.IntVar(value=50)
+        self._start_y_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.start_y_var, width=10,
+        )
+        self._start_y_spinbox.grid(row=1, column=1, sticky=tk.W, pady=2)
+        self._start_y_cm_label = ttk.Label(frame, text="≈ 1.32 cm from top",
+                                           font=("TkDefaultFont", 8), foreground="gray")
+        self._start_y_cm_label.grid(row=1, column=2, sticky=tk.W, padx=5)
+
+        # ── Right margin ──────────────────────────────────────────────
+        ttk.Label(frame, text="Right Margin (px):").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.right_margin_var = tk.IntVar(value=50)
+        self._right_margin_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.right_margin_var, width=10,
+        )
+        self._right_margin_spinbox.grid(row=2, column=1, sticky=tk.W, pady=2)
+        self._right_margin_cm_label = ttk.Label(frame, text="≈ 1.32 cm from right",
+                                                font=("TkDefaultFont", 8), foreground="gray")
+        self._right_margin_cm_label.grid(row=2, column=2, sticky=tk.W, padx=5)
+
+        # ── Bottom margin ─────────────────────────────────────────────
+        ttk.Label(frame, text="Bottom Margin (px):").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.bottom_margin_var = tk.IntVar(value=50)
+        self._bottom_margin_spinbox = ttk.Spinbox(
+            frame, from_=0, to=400, textvariable=self.bottom_margin_var, width=10,
+        )
+        self._bottom_margin_spinbox.grid(row=3, column=1, sticky=tk.W, pady=2)
+        self._bottom_margin_cm_label = ttk.Label(frame, text="≈ 1.32 cm from bottom",
+                                                 font=("TkDefaultFont", 8), foreground="gray")
+        self._bottom_margin_cm_label.grid(row=3, column=2, sticky=tk.W, padx=5)
+
+        # ── Ink color ─────────────────────────────────────────────────
+        ttk.Label(frame, text="Ink Color:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.ink_color_var = tk.StringVar(value="dark_brown")
+        ink_colors = [
+            "dark_brown",      # (44, 36, 22)  – original
+            "black",           # (15, 10, 10)
+            "faded_brown",     # (80, 65, 45)
+            "iron_gall",       # (35, 30, 50)  – blueish-black
+            "sepia",           # (90, 60, 30)
+            "charcoal",        # (50, 48, 46)
+        ]
+        self._ink_color_combo = ttk.Combobox(
+            frame, textvariable=self.ink_color_var,
+            values=ink_colors, state="readonly", width=25,
+        )
+        self._ink_color_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Ink color swatch label (preview)
+        self._ink_swatch_label = ttk.Label(frame, text="■ (44, 36, 22)",
+                                           font=("TkDefaultFont", 8), foreground="gray")
+        self._ink_swatch_label.grid(row=4, column=2, sticky=tk.W, padx=5)
+
+    # ------------------------------------------------------------------
+    # Ink colour mapping
+    # ------------------------------------------------------------------
+    INK_COLOR_MAP = {
+        "dark_brown":  (44, 36, 22),
+        "black":       (15, 10, 10),
+        "faded_brown": (80, 65, 45),
+        "iron_gall":   (35, 30, 50),
+        "sepia":       (90, 60, 30),
+        "charcoal":    (50, 48, 46),
+    }
+
+    def _get_ink_color_rgb(self) -> tuple:
+        """Return the (R, G, B) tuple for the currently selected ink colour."""
+        return self.INK_COLOR_MAP.get(self.ink_color_var.get(), (44, 36, 22))
+
+    def _update_cm_labels(self, *_args):
+        """Refresh the ≈ cm helper labels next to the spinboxes."""
+        try:
+            sx = self.start_x_var.get()
+            self._start_x_cm_label.config(text=f"≈ {self._px_to_cm(sx):.2f} cm from left")
+        except tk.TclError:
+            pass
+        try:
+            sy = self.start_y_var.get()
+            self._start_y_cm_label.config(text=f"≈ {self._px_to_cm(sy):.2f} cm from top")
+        except tk.TclError:
+            pass
+        try:
+            rm = self.right_margin_var.get()
+            self._right_margin_cm_label.config(text=f"≈ {self._px_to_cm(rm):.2f} cm from right")
+        except tk.TclError:
+            pass
+        try:
+            bm = self.bottom_margin_var.get()
+            self._bottom_margin_cm_label.config(text=f"≈ {self._px_to_cm(bm):.2f} cm from bottom")
+        except tk.TclError:
+            pass
+        try:
+            rgb = self._get_ink_color_rgb()
+            self._ink_swatch_label.config(text=f"■ {rgb}")
+        except tk.TclError:
+            pass
+
     def setup_preview(self, parent):
         """Setup preview area - fits entire A4 page without scrolling"""
         # Create canvas frame
@@ -443,8 +676,20 @@ class CipherGeneratorGUI:
         self.table_col_spacing_var.trace_add('write', self._on_visual_config_change)
         self.table_vertical_lines_var.trace_add('write', self._on_visual_config_change)
 
+        # Layout & ink listeners (visual only)
+        self.start_x_var.trace_add('write', self._on_layout_config_change)
+        self.start_y_var.trace_add('write', self._on_layout_config_change)
+        self.right_margin_var.trace_add('write', self._on_layout_config_change)
+        self.bottom_margin_var.trace_add('write', self._on_layout_config_change)
+        self.ink_color_var.trace_add('write', self._on_layout_config_change)
+
     def _on_visual_config_change(self, *args):
         """Called when visual config changes - uses all cached data"""
+        self._schedule_debounced_regenerate()
+
+    def _on_layout_config_change(self, *args):
+        """Called when layout/ink config changes - update cm labels and re-render."""
+        self._update_cm_labels()
         self._schedule_debounced_regenerate()
 
     def _on_paper_config_change(self, *args):
@@ -476,7 +721,10 @@ class CipherGeneratorGUI:
         self._cached_code_table_key = None
 
     def _schedule_debounced_regenerate(self):
-        """Schedule a debounced regeneration"""
+        """Schedule a debounced regeneration (only if user has generated at least once)"""
+        if not self._preview_generated_once:
+            return
+
         # Cancel any pending regeneration
         if self._debounce_timer is not None:
             self._debounce_timer.cancel()
@@ -515,6 +763,8 @@ class CipherGeneratorGUI:
             self._invalidate_paper_cache()
             self._invalidate_code_table_cache()
             self._do_generate(show_message=True)
+            # Enable auto-regeneration on future config changes
+            self._preview_generated_once = True
         except Exception as e:
             import traceback
             messagebox.showerror("Error", f"Failed to generate preview:\n{str(e)}\n\n{traceback.format_exc()}")
@@ -589,20 +839,28 @@ class CipherGeneratorGUI:
             include_table = self.include_table_codes_var.get()
             include_pairs = self.include_column_pairs_var.get()
 
+            # Read layout settings
+            start_x = self.start_x_var.get()
+            start_y = self.start_y_var.get()
+            right_margin = self.right_margin_var.get()
+            bottom_margin = self.bottom_margin_var.get()
+            ink_color = self._get_ink_color_rgb()
+
             # Track current Y so table and pairs stack vertically on same page
-            current_y = 50
+            current_y = start_y
 
             # ── Table codes (rendered first, at top of page) ─────────────
             if include_table:
                 table_config = self._build_table_config()
                 code_table = self._get_or_generate_code_table(table_config)
                 current_y = generator.render_table_codes(
-                    img, table_config, 50, current_y,
+                    img, table_config, start_x, current_y,
                     font_path=selected_font_path,
                     use_variations=use_variations,
                     track_annotations=True,
                     code_table=code_table,
                     font_size=self.table_font_size_var.get(),
+                    ink_color=ink_color,
                 )
                 # Add a gap between table and column pairs
                 current_y += self.spacing_var.get() * 4
@@ -611,11 +869,14 @@ class CipherGeneratorGUI:
             if include_pairs:
                 cipher_entries = self._get_cipher_entries()
                 generator.render_cipher_text(
-                    img, cipher_entries, 50, current_y,
+                    img, cipher_entries, start_x, current_y,
                     block_id=1,
                     font_path=selected_font_path,
                     use_variations=use_variations,
                     track_annotations=True,
+                    right_margin=right_margin,
+                    bottom_margin=bottom_margin,
+                    ink_color=ink_color,
                 )
 
             # Mark font as used (for statistics)

@@ -158,7 +158,9 @@ class CipherImageGenerator:
     def render_cipher_text(self, img: Image.Image, cipher_entries: List[Tuple[str, str]],
                            start_x: int, start_y: int, block_id: int = 0,
                            font_path: Optional[str] = None, use_variations: bool = True,
-                           track_annotations: bool = True) -> int:
+                           track_annotations: bool = True,
+                           right_margin: int = 50, bottom_margin: int = 50,
+                           ink_color: Optional[Tuple[int, int, int]] = None) -> int:
         """Render cipher text with keys on image using multi-column layout"""
 
         # Load font path
@@ -169,8 +171,6 @@ class CipherImageGenerator:
             # Multi-column layout configuration
             left_margin = start_x
             top_margin = start_y
-            right_margin = 50
-            bottom_margin = 50
             column_spacing = 30  # Gap between columns
 
             # Calculate available space
@@ -237,7 +237,8 @@ class CipherImageGenerator:
                     column_separator=self.font_config.column_separator,
                     paper_width=self.paper_config.width,
                     track_annotations=track_annotations,
-                    max_column_width=max_col_width
+                    max_column_width=max_col_width,
+                    ink_color=ink_color,
                 )
 
                 # Update column_max_x by checking the actual bounding box width
@@ -399,6 +400,7 @@ class CipherImageGenerator:
         track_annotations: bool = True,
         code_table: Optional[dict] = None,
         font_size: Optional[int] = None,
+        ink_color: Optional[Tuple[int, int, int]] = None,
     ) -> int:
         """Render a homophonic code table on *img*.
 
@@ -426,6 +428,7 @@ class CipherImageGenerator:
             font_size=actual_font_size,
             spacing=self.font_config.spacing,
             variation_level=variation_level,
+            ink_color=ink_color,
         )
 
         next_y = table_gen.render_table(
