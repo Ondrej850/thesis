@@ -87,6 +87,9 @@ class CipherGeneratorGUI:
         self.preview_image = None
         self.current_generator = None  # Store generator instance
 
+        # Only auto-regenerate after the user has clicked "Generate Preview" once
+        self._preview_generated_once = False
+
         # Real-time preview: debounce timer for config changes
         self._debounce_timer = None
         self._debounce_delay = 0.3  # 300ms delay before regenerating
@@ -706,7 +709,10 @@ class CipherGeneratorGUI:
         self._cached_code_table_key = None
 
     def _schedule_debounced_regenerate(self):
-        """Schedule a debounced regeneration"""
+        """Schedule a debounced regeneration (only if user has generated at least once)"""
+        if not self._preview_generated_once:
+            return
+
         # Cancel any pending regeneration
         if self._debounce_timer is not None:
             self._debounce_timer.cancel()
@@ -745,6 +751,8 @@ class CipherGeneratorGUI:
             self._invalidate_paper_cache()
             self._invalidate_code_table_cache()
             self._do_generate(show_message=True)
+            # Enable auto-regeneration on future config changes
+            self._preview_generated_once = True
         except Exception as e:
             import traceback
             messagebox.showerror("Error", f"Failed to generate preview:\n{str(e)}\n\n{traceback.format_exc()}")
