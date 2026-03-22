@@ -33,17 +33,24 @@ class CipherImageGenerator:
         # Apply aging effects based on aging_level
         aging = self.paper_config.aging_level / 100.0
 
-        # Add yellowing/browning
-        for _ in range(int(500 * aging)):
-            x = random.randint(0, self.paper_config.width)
-            y = random.randint(0, self.paper_config.height)
-            size = random.randint(5, 30)
-            color = random.choice(['#D4C4A8', '#C8B896', '#BCA87A'])
-            alpha = random.randint(10, 50)
+        # Add yellowing/browning — draw all dots onto a single overlay
+        num_dots = int(500 * aging)
+        if num_dots > 0:
             overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
             overlay_draw = ImageDraw.Draw(overlay)
-            overlay_draw.ellipse([x, y, x + size, y + size],
-                                 fill=(*self._hex_to_rgb(color), alpha))
+            aging_colors = [
+                self._hex_to_rgb('#D4C4A8'),
+                self._hex_to_rgb('#C8B896'),
+                self._hex_to_rgb('#BCA87A'),
+            ]
+            for _ in range(num_dots):
+                x = random.randint(0, self.paper_config.width)
+                y = random.randint(0, self.paper_config.height)
+                size = random.randint(5, 30)
+                color = random.choice(aging_colors)
+                alpha = random.randint(10, 50)
+                overlay_draw.ellipse([x, y, x + size, y + size],
+                                     fill=(*color, alpha))
             img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
 
         # Add defects

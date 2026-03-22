@@ -329,12 +329,24 @@ class DatasetDialog(tk.Toplevel):
 
         threading.Thread(target=_run, daemon=True).start()
 
-    def _on_progress(self, current: int, total: int):
-        self.after(0, lambda: self._update_progress(current, total))
+    @staticmethod
+    def _fmt_time(seconds: float) -> str:
+        s = int(seconds)
+        if s < 60:
+            return f"{s}s"
+        m, s = divmod(s, 60)
+        return f"{m}m {s}s"
 
-    def _update_progress(self, current: int, total: int):
+    def _on_progress(self, current: int, total: int, elapsed: float, eta: float):
+        self.after(0, lambda: self._update_progress(current, total, elapsed, eta))
+
+    def _update_progress(self, current: int, total: int, elapsed: float, eta: float):
         self._progress_var.set(current)
-        self._progress_label.config(text=f"{current} / {total}")
+        elapsed_str = self._fmt_time(elapsed)
+        eta_str = self._fmt_time(eta)
+        self._progress_label.config(
+            text=f"{current} / {total}   |   Elapsed: {elapsed_str}   |   ETA: {eta_str}"
+        )
 
     def _on_cancel_generation(self):
         if self._generator:

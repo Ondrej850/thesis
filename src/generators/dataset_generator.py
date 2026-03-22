@@ -6,6 +6,7 @@ Path: src/generators/dataset_generator.py
 
 import os
 import random
+import time
 from typing import Callable, Optional
 
 from src.models.paper_config import PaperConfig
@@ -61,12 +62,13 @@ class DatasetGenerator:
 
     def generate(
         self,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
+        progress_callback: Optional[Callable[[int, int, float, float], None]] = None,
     ) -> str:
         """Generate the full dataset.
 
         Args:
-            progress_callback: Called with (current_index, total) after each image.
+            progress_callback: Called with (current_index, total, elapsed_s, eta_s)
+                after each image.
 
         Returns:
             Path to the output directory.
@@ -75,31 +77,40 @@ class DatasetGenerator:
         images_dir = os.path.join(self.config.output_dir, "images")
         os.makedirs(images_dir, exist_ok=True)
 
+        annotations_dir = os.path.join(self.config.output_dir, "annotations")
+        os.makedirs(annotations_dir, exist_ok=True)
+
+        fmt = self.config.annotation_format
+        yolo_dir = None
+        if fmt in ("yolo", "both"):
+            yolo_dir = os.path.join(annotations_dir, "yolo")
+            os.makedirs(yolo_dir, exist_ok=True)
+
         coco_manager = COCOAnnotationManager()
+        t0 = time.monotonic()
 
         for i in range(self.config.num_images):
             if self._cancelled:
                 break
 
             params = self.config.sample()
+            filename = f"image_{i:04d}.png"
             self._generate_single(i, params, coco_manager, images_dir)
 
+            # Export YOLO per-image immediately so data is saved incrementally
+            if yolo_dir is not None:
+                coco_manager.export_yolo(yolo_dir, filename)
+
+            elapsed = time.monotonic() - t0
+            per_image = elapsed / (i + 1)
+            eta = per_image * (self.config.num_images - (i + 1))
+
             if progress_callback:
-                progress_callback(i + 1, self.config.num_images)
+                progress_callback(i + 1, self.config.num_images, elapsed, eta)
 
-        # Export annotations
-        if not self._cancelled:
-            annotations_dir = os.path.join(self.config.output_dir, "annotations")
-            os.makedirs(annotations_dir, exist_ok=True)
-
-            fmt = self.config.annotation_format
-            if fmt in ("coco", "both"):
-                coco_manager.export_coco(os.path.join(annotations_dir, "annotations.json"))
-            if fmt in ("yolo", "both"):
-                yolo_dir = os.path.join(annotations_dir, "yolo")
-                os.makedirs(yolo_dir, exist_ok=True)
-                for img_info in coco_manager.images:
-                    coco_manager.export_yolo(yolo_dir, img_info["file_name"])
+        # Export COCO (single JSON for all images)
+        if not self._cancelled and fmt in ("coco", "both"):
+            coco_manager.export_coco(os.path.join(annotations_dir, "annotations.json"))
 
         return self.config.output_dir
 
