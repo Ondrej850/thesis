@@ -262,9 +262,19 @@ class VariatedTextRenderer:
             paste_x = int(x + x_offset - temp_size // 2 + char_width // 2)
             paste_y = int(y + y_offset - temp_size // 2 + char_height // 2)
 
-            if 0 <= paste_x < temp_image.width - temp_size and \
-               0 <= paste_y < temp_image.height - temp_size:
-                temp_image.paste(char_img, (paste_x, paste_y), char_img)
+            # Compute the overlap between the temp image and the main image,
+            # then crop & paste only the visible portion.  This avoids silently
+            # dropping characters that are partially outside the image bounds.
+            src_x1 = max(0, -paste_x)
+            src_y1 = max(0, -paste_y)
+            src_x2 = min(char_img.width, temp_image.width - paste_x)
+            src_y2 = min(char_img.height, temp_image.height - paste_y)
+
+            if src_x2 > src_x1 and src_y2 > src_y1:
+                dst_x = max(0, paste_x)
+                dst_y = max(0, paste_y)
+                cropped = char_img.crop((src_x1, src_y1, src_x2, src_y2))
+                temp_image.paste(cropped, (dst_x, dst_y), cropped)
         else:
             draw.text((actual_x, actual_y), char, font=font, fill=ink_color)
 
