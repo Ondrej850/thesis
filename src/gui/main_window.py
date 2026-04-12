@@ -23,6 +23,7 @@ from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.database.font_manager import FontManager
+from src.gui.dataset_dialog import DatasetDialog
 
 
 class CollapsibleSection(ttk.Frame):
@@ -637,6 +638,8 @@ class CipherGeneratorGUI:
                   command=self.show_stats, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Fonts",
                   command=self.show_font_stats, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Generate Dataset",
+                  command=self.open_dataset_dialog, width=18).pack(side=tk.LEFT, padx=5)
 
     def _bind_config_change_listeners(self):
         """Bind change listeners to all config widgets for real-time preview"""
@@ -1215,3 +1218,8 @@ Annotations by Category:
                 message += f"  Last used: {last_used}\n\n"
 
         messagebox.showinfo("Font Statistics", message)
+
+    def open_dataset_dialog(self):
+        """Open the batch dataset generation dialog."""
+        paper_types = [pt[1] for pt in self.db.get_paper_types()]
+        DatasetDialog(self.root, self.db, self.font_manager, paper_types)

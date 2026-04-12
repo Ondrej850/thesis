@@ -242,15 +242,26 @@ class TableCodesGenerator:
     ) -> int:
         """Render one horizontal block: header row + separator + code rows + closing line.
 
+        Cell (pair) and section bboxes are built from the actual rendered
+        element bboxes, so they are tight to the printed text — matching
+        how column-pair annotations work.
+
         Returns the Y position below this block.
         """
         draw = ImageDraw.Draw(img)
         row_h = self.font_size + self.spacing
         line_x_end = x + len(symbols) * col_w
 
+        # Per-column list of element-bbox indices so we can build tight
+        # cell bboxes afterwards.  Elements are interleaved (all headers
+        # first, then code rows across columns) so we track by col_idx.
+        col_elem_indices: Dict[int, List[int]] = {i: [] for i in range(len(symbols))}
+        elems = self._text_renderer.collected_element_bboxes
+
         # ── 1. Header row (symbol letters / n-grams / nulls) ────────────
         current_y = y
         for col_idx, sym in enumerate(symbols):
+            before = len(elems)
             col_x = x + col_idx * col_w
             text_w, _ = self._measure_text(draw, sym, font)
             centered_x = col_x + (col_w - text_w) // 2
@@ -259,6 +270,8 @@ class TableCodesGenerator:
                 font_path or "", self.font_size, self.BASE_COLOR,
                 track_annotations=track_annotations,
             )
+            if track_annotations and len(elems) > before:
+                col_elem_indices[col_idx].append(len(elems) - 1)
         current_y += row_h
 
         # ── 2. Separator line below header ──────────────────────────────
@@ -272,6 +285,7 @@ class TableCodesGenerator:
                 codes = code_table[sym]
                 if code_row_idx >= len(codes):
                     continue
+                before = len(elems)
                 col_x = x + col_idx * col_w
                 code_str = str(codes[code_row_idx])
                 text_w, _ = self._measure_text(draw, code_str, font)
@@ -281,46 +295,57 @@ class TableCodesGenerator:
                     font_path or "", self.font_size, self.BASE_COLOR,
                     track_annotations=track_annotations,
                 )
+                if track_annotations and len(elems) > before:
+                    col_elem_indices[col_idx].append(len(elems) - 1)
             current_y += row_h
 
         # ── 4. Vertical column separator lines ───────────────────────────
         if self.config.draw_vertical_lines:
             block_top = y
-            block_bottom = current_y  # just before the closing separator line
+            block_bottom = current_y
             for col_idx in range(len(symbols) + 1):
                 vx = x + col_idx * col_w
                 draw.line([(vx, block_top), (vx, block_bottom)], fill=self.BASE_COLOR, width=1)
 
-        # ── 5. Build geometry-based COCO annotations ─────────────────────
+        # ── 5. Build COCO annotations from actual element bboxes ─────────
         if track_annotations:
+            cells_added = 0
             for col_idx, sym in enumerate(symbols):
-                n_codes = len(code_table[sym])
-                if n_codes == 0:
+                indices = col_elem_indices[col_idx]
+                if not indices:
                     continue
-                col_x = x + col_idx * col_w
-                cell_bottom = y + row_h + 4 + n_codes * row_h
+
                 cell_bbox = BoundingBox()
                 cell_bbox.text = f"{sym}:{','.join(str(c) for c in code_table[sym])}"
-                cell_bbox.min_x = float(col_x)
-                cell_bbox.min_y = float(y)
-                cell_bbox.max_x = float(col_x + col_w)
-                cell_bbox.max_y = float(cell_bottom)
+                for idx in indices:
+                    eb = elems[idx]
+                    if eb.is_valid():
+                        cell_bbox.min_x = min(cell_bbox.min_x, eb.min_x)
+                        cell_bbox.min_y = min(cell_bbox.min_y, eb.min_y)
+                        cell_bbox.max_x = max(cell_bbox.max_x, eb.max_x)
+                        cell_bbox.max_y = max(cell_bbox.max_y, eb.max_y)
                 if cell_bbox.is_valid():
                     self._text_renderer.collected_pair_bboxes.append(cell_bbox)
+                    cells_added += 1
 
-            block_bbox = BoundingBox()
-            block_bbox.text = (
-                f"RowBlock({''.join(symbols)}) "
-                f"{len(symbols)} symbols × up to {max_codes_in_row} codes"
-            )
-            block_bbox.min_x = float(x)
-            block_bbox.min_y = float(y)
-            block_bbox.max_x = float(line_x_end)
-            block_bbox.max_y = float(current_y)
-            if block_bbox.is_valid():
-                self._text_renderer.collected_section_bboxes.append(block_bbox)
+            # Section bbox: union of all cell bboxes we just added
+            if cells_added > 0:
+                recent_cells = self._text_renderer.collected_pair_bboxes[-cells_added:]
+                block_bbox = BoundingBox()
+                block_bbox.text = (
+                    f"RowBlock({''.join(symbols)}) "
+                    f"{len(symbols)} symbols × up to {max_codes_in_row} codes"
+                )
+                for cell in recent_cells:
+                    if cell.is_valid():
+                        block_bbox.min_x = min(block_bbox.min_x, cell.min_x)
+                        block_bbox.min_y = min(block_bbox.min_y, cell.min_y)
+                        block_bbox.max_x = max(block_bbox.max_x, cell.max_x)
+                        block_bbox.max_y = max(block_bbox.max_y, cell.max_y)
+                if block_bbox.is_valid():
+                    self._text_renderer.collected_section_bboxes.append(block_bbox)
 
-        # ── 5. Closing separator line ────────────────────────────────────
+        # ── 6. Closing separator line ────────────────────────────────────
         draw.line([(x, current_y), (line_x_end, current_y)], fill=self.BASE_COLOR, width=1)
         current_y += 2
 
