@@ -29,6 +29,7 @@ class DatasetConfig:
     include_column_pairs: str = "always"  # "always", "never", "random"
     cipher_types: List[str] = field(default_factory=lambda: ["substitution"])
     key_types: List[str] = field(default_factory=lambda: ["number"])
+    pair_formats: List[str] = field(default_factory=lambda: ["text_first", "number_first"])
     num_entries_range: Tuple[int, int] = (10, 50)
     cp_font_size_range: Tuple[int, int] = (10, 20)
 
@@ -51,10 +52,12 @@ class DatasetConfig:
     table_font_size_range: Tuple[int, int] = (10, 20)
 
     # Layout
-    start_x_range: Tuple[int, int] = (30, 80)
-    start_y_range: Tuple[int, int] = (30, 80)
-    right_margin_range: Tuple[int, int] = (30, 80)
-    bottom_margin_range: Tuple[int, int] = (30, 80)
+    start_x_range: Tuple[int, int] = (0, 100)
+    start_y_range: Tuple[int, int] = (0, 100)
+    right_margin_range: Tuple[int, int] = (0, 80)
+    bottom_margin_range: Tuple[int, int] = (0, 80)
+    line_spacing_jitter_range: Tuple[int, int] = (0, 8)
+    include_title: str = "random"  # "always", "never", "random"
     ink_colors: List[str] = field(
         default_factory=lambda: ["dark_brown", "black", "faded_brown", "iron_gall", "sepia", "charcoal"]
     )
@@ -98,6 +101,7 @@ class DatasetConfig:
             "include_column_pairs": include_pairs,
             "cipher_type": random.choice(self.cipher_types),
             "key_type": random.choice(self.key_types),
+            "pair_format": random.choice(self.pair_formats),
             "num_entries": random.randint(*self.num_entries_range),
             "cp_font_size": random.randint(*self.cp_font_size_range),
 
@@ -124,5 +128,7 @@ class DatasetConfig:
             "start_y": random.randint(*self.start_y_range),
             "right_margin": random.randint(*self.right_margin_range),
             "bottom_margin": random.randint(*self.bottom_margin_range),
+            "line_spacing_jitter": random.randint(*self.line_spacing_jitter_range),
+            "include_title": self._resolve_toggle(self.include_title),
             "ink_color": random.choice(self.ink_colors),
         }

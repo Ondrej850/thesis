@@ -211,6 +211,48 @@ class TableCodesGenerator:
         bb = draw.textbbox((0, 0), text, font=font)
         return bb[2] - bb[0], bb[3] - bb[1]
 
+    def _draw_wavy_line(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x1: int, y1: int, x2: int, y2: int,
+        color: Tuple[int, int, int],
+        width: int = 1,
+        amplitude: float = 1.2,
+        segment_len: int = 8,
+    ) -> None:
+        """Draw a slightly wavy line between two points.
+
+        The line is broken into short segments; each interior control point
+        is offset by a small random amount perpendicular to the line direction.
+        This simulates hand-drawn ruler lines on historical documents.
+        """
+        import math
+        dx = x2 - x1
+        dy = y2 - y1
+        length = math.hypot(dx, dy)
+        if length < 2:
+            draw.line([(x1, y1), (x2, y2)], fill=color, width=width)
+            return
+
+        n_segments = max(2, int(length / segment_len))
+        # Unit normal perpendicular to line direction
+        nx = -dy / length
+        ny = dx / length
+
+        points: List[Tuple[float, float]] = [(float(x1), float(y1))]
+        for i in range(1, n_segments):
+            t = i / n_segments
+            base_x = x1 + dx * t
+            base_y = y1 + dy * t
+            offset = random.uniform(-amplitude, amplitude)
+            points.append((base_x + nx * offset, base_y + ny * offset))
+        points.append((float(x2), float(y2)))
+
+        for i in range(len(points) - 1):
+            p0 = (int(round(points[i][0])), int(round(points[i][1])))
+            p1 = (int(round(points[i + 1][0])), int(round(points[i + 1][1])))
+            draw.line([p0, p1], fill=color, width=width)
+
     def _compute_column_width(
         self,
         draw: ImageDraw.ImageDraw,
@@ -275,7 +317,7 @@ class TableCodesGenerator:
         current_y += row_h
 
         # ── 2. Separator line below header ──────────────────────────────
-        draw.line([(x, current_y), (line_x_end, current_y)], fill=self.BASE_COLOR, width=1)
+        self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
         current_y += 4
 
         # ── 3. Code rows ─────────────────────────────────────────────────
@@ -305,7 +347,7 @@ class TableCodesGenerator:
             block_bottom = current_y
             for col_idx in range(len(symbols) + 1):
                 vx = x + col_idx * col_w
-                draw.line([(vx, block_top), (vx, block_bottom)], fill=self.BASE_COLOR, width=1)
+                self._draw_wavy_line(draw, vx, block_top, vx, block_bottom, self.BASE_COLOR)
 
         # ── 5. Build COCO annotations from actual element bboxes ─────────
         if track_annotations:
@@ -346,7 +388,7 @@ class TableCodesGenerator:
                     self._text_renderer.collected_section_bboxes.append(block_bbox)
 
         # ── 6. Closing separator line ────────────────────────────────────
-        draw.line([(x, current_y), (line_x_end, current_y)], fill=self.BASE_COLOR, width=1)
+        self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
         current_y += 2
 
         return current_y

@@ -167,7 +167,9 @@ class CipherImageGenerator:
                            font_path: Optional[str] = None, use_variations: bool = True,
                            track_annotations: bool = True,
                            right_margin: int = 50, bottom_margin: int = 50,
-                           ink_color: Optional[Tuple[int, int, int]] = None) -> int:
+                           ink_color: Optional[Tuple[int, int, int]] = None,
+                           pair_format: str = "text_first",
+                           line_spacing_variation: float = 0.0) -> int:
         """Render cipher text with keys on image using multi-column layout"""
 
         # Load font path
@@ -246,7 +248,13 @@ class CipherImageGenerator:
                     track_annotations=track_annotations,
                     max_column_width=max_col_width,
                     ink_color=ink_color,
+                    pair_format=pair_format,
                 )
+
+                # Apply per-line spacing variation if configured
+                if line_spacing_variation > 0:
+                    extra = random.uniform(-line_spacing_variation, line_spacing_variation)
+                    next_y += extra
 
                 # Update column_max_x by checking the actual bounding box width
                 if track_annotations:
@@ -391,6 +399,108 @@ class CipherImageGenerator:
         """Reset all annotations (useful when generating multiple batches)"""
         self.coco_manager.reset()
         self.cipher_renderer.reset_annotations()
+
+    # ------------------------------------------------------------------
+    # Title / header rendering
+    # ------------------------------------------------------------------
+
+    TITLE_TEMPLATES = [
+        "Alphabetum Cifratum",
+        "Cifra Nova",
+        "Clavis Secreta",
+        "Tabula Cifrarum",
+        "Liber Secretus",
+        "Cifra Generalis",
+        "Alphabetum Secretum",
+        "Cifra Diplomatica",
+        "Clavis Alphabetica",
+        "Nomenclator",
+        "Cifra Regia",
+        "Tabula Secretorum",
+    ]
+
+    def render_title(
+        self,
+        img: Image.Image,
+        start_x: int,
+        start_y: int,
+        font_path: Optional[str] = None,
+        use_variations: bool = True,
+        track_annotations: bool = True,
+        ink_color: Optional[Tuple[int, int, int]] = None,
+        title_text: Optional[str] = None,
+        title_font_size: Optional[int] = None,
+    ) -> int:
+        """Render a title / header line above the cipher content.
+
+        Each word becomes a separate element annotation; the whole title
+        becomes a section annotation.
+
+        Args:
+            title_text: Explicit title string; if None, one is picked at random.
+            title_font_size: Font size for the title; defaults to 1.5x base font.
+
+        Returns:
+            Y position below the title (ready for next content).
+        """
+        if font_path is None:
+            font_path = self._get_fallback_font_path()
+
+        base_color = ink_color or (44, 36, 22)
+        fs = title_font_size or int(self.font_config.font_size * 1.5)
+        text = title_text or random.choice(self.TITLE_TEMPLATES)
+
+        renderer = self.cipher_renderer._text_renderer
+
+        # Track section from all element bboxes added during title rendering
+        elems_before = len(renderer.collected_element_bboxes)
+
+        # Render each word as a separate tracked element
+        draw = ImageDraw.Draw(img)
+        current_x = float(start_x)
+        for word_idx, word in enumerate(text.split()):
+            renderer.render_varied_text(
+                img, word, current_x, start_y,
+                font_path or "", fs, base_color,
+                track_annotations=track_annotations,
+            )
+            # Measure the word to advance x
+            try:
+                font = ImageFont.truetype(font_path, fs)
+            except Exception:
+                font = ImageFont.load_default()
+            bb = draw.textbbox((0, 0), word, font=font)
+            word_w = bb[2] - bb[0]
+            current_x += word_w + fs * 0.4  # inter-word gap
+
+        # Build a section bbox from the newly-added element bboxes
+        if track_annotations:
+            elems_after = len(renderer.collected_element_bboxes)
+            new_elems = renderer.collected_element_bboxes[elems_before:elems_after]
+            if new_elems:
+                from src.models.coco_annotation import BoundingBox
+                section_bbox = BoundingBox()
+                section_bbox.text = f"Title: {text}"
+                for eb in new_elems:
+                    if eb.is_valid():
+                        section_bbox.min_x = min(section_bbox.min_x, eb.min_x)
+                        section_bbox.min_y = min(section_bbox.min_y, eb.min_y)
+                        section_bbox.max_x = max(section_bbox.max_x, eb.max_x)
+                        section_bbox.max_y = max(section_bbox.max_y, eb.max_y)
+                if section_bbox.is_valid():
+                    renderer.collected_section_bboxes.append(section_bbox)
+
+        # Feed annotations to COCO manager
+        if track_annotations and self.current_image_id is not None:
+            annotations = renderer.get_annotations(self.current_image_id)
+            self.coco_manager.add_annotations(self.current_image_id, annotations)
+            # Reset so they aren't double-counted by later render passes
+            renderer.collected_element_bboxes = []
+            renderer.collected_pair_bboxes = []
+            renderer.collected_section_bboxes = []
+
+        next_y = start_y + fs + self.font_config.spacing * 2
+        return int(next_y)
 
     # ------------------------------------------------------------------
     # Table-codes rendering

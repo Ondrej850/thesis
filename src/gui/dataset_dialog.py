@@ -18,11 +18,12 @@ from src.database.font_manager import FontManager
 # Reusable constants
 ALL_DEFECTS = ["wrinkled_edges", "burns", "stains", "holes", "tears", "yellowing"]
 ALL_CIPHER_TYPES = ["substitution", "bigram", "trigram", "dictionary", "nulls"]
-ALL_KEY_TYPES = ["number", "special_character"]
+ALL_KEY_TYPES = ["number", "single_char", "special_character"]
 ALL_VARIATION_LEVELS = ["none", "low", "medium", "high"]
 ALL_COL_SEPARATORS = ["none", "line", "double_line"]
 ALL_KEY_SEPARATORS = ["dots", "dashes", "none"]
 ALL_TABLE_CONTENT = ["alphabet", "ngrams", "nulls"]
+ALL_PAIR_FORMATS = ["text_first", "number_first"]
 ALL_INK_COLORS = ["dark_brown", "black", "faded_brown", "iron_gall", "sepia", "charcoal"]
 TOGGLE_OPTIONS = ["always", "never", "random"]
 
@@ -197,6 +198,8 @@ class DatasetDialog(tk.Toplevel):
                                                             defaults=["substitution"])
         self._key_type_vars, row = self._add_checkboxes(row, "Key Types:", ALL_KEY_TYPES,
                                                          defaults=["number"])
+        self._pair_fmt_vars, row = self._add_checkboxes(row, "Pair Formats:", ALL_PAIR_FORMATS,
+                                                         defaults=["text_first", "number_first"])
         self._entries_lo, self._entries_hi, row = self._add_range(row, "Num Entries:", 5, 100, 10, 50)
         self._cp_fs_lo, self._cp_fs_hi, row = self._add_range(row, "Font Size:", 8, 36, 10, 20)
         return row
@@ -230,10 +233,12 @@ class DatasetDialog(tk.Toplevel):
 
     def _section_layout(self, row: int) -> int:
         row = self._add_section_label(row, "Layout & Ink")
-        self._sx_lo, self._sx_hi, row = self._add_range(row, "Start X:", 0, 400, 30, 80)
-        self._sy_lo, self._sy_hi, row = self._add_range(row, "Start Y:", 0, 400, 30, 80)
-        self._rm_lo, self._rm_hi, row = self._add_range(row, "Right Margin:", 0, 400, 30, 80)
-        self._bm_lo, self._bm_hi, row = self._add_range(row, "Bottom Margin:", 0, 400, 30, 80)
+        self._sx_lo, self._sx_hi, row = self._add_range(row, "Start X:", 0, 400, 0, 100)
+        self._sy_lo, self._sy_hi, row = self._add_range(row, "Start Y:", 0, 400, 0, 100)
+        self._rm_lo, self._rm_hi, row = self._add_range(row, "Right Margin:", 0, 400, 0, 80)
+        self._bm_lo, self._bm_hi, row = self._add_range(row, "Bottom Margin:", 0, 400, 0, 80)
+        self._jitter_lo, self._jitter_hi, row = self._add_range(row, "Line Spacing Jitter:", 0, 20, 0, 8)
+        self._title_toggle, row = self._add_toggle(row, "Include Title:", "random")
         self._ink_vars, row = self._add_checkboxes(row, "Ink Colors:", ALL_INK_COLORS)
         return row
 
@@ -265,6 +270,7 @@ class DatasetDialog(tk.Toplevel):
             include_column_pairs=self._cp_toggle.get(),
             cipher_types=self._checked(self._cipher_type_vars) or ["substitution"],
             key_types=self._checked(self._key_type_vars) or ["number"],
+            pair_formats=self._checked(self._pair_fmt_vars) or ["text_first"],
             num_entries_range=(self._entries_lo.get(), self._entries_hi.get()),
             cp_font_size_range=(self._cp_fs_lo.get(), self._cp_fs_hi.get()),
             # Font
@@ -288,6 +294,8 @@ class DatasetDialog(tk.Toplevel):
             start_y_range=(self._sy_lo.get(), self._sy_hi.get()),
             right_margin_range=(self._rm_lo.get(), self._rm_hi.get()),
             bottom_margin_range=(self._bm_lo.get(), self._bm_hi.get()),
+            line_spacing_jitter_range=(self._jitter_lo.get(), self._jitter_hi.get()),
+            include_title=self._title_toggle.get(),
             ink_colors=self._checked(self._ink_vars) or ["dark_brown"],
         )
         return cfg

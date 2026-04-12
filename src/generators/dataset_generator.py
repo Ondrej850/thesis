@@ -159,6 +159,23 @@ class DatasetGenerator:
 
         current_y = params["start_y"]
 
+        # Title / header
+        if params.get("include_title", False):
+            current_y = generator.render_title(
+                img, params["start_x"], current_y,
+                font_path=font_path,
+                use_variations=use_variations,
+                track_annotations=True,
+                ink_color=ink_color,
+            )
+            # Transfer title annotations to shared manager
+            for ann in generator.coco_manager.annotations:
+                ann["image_id"] = image_id
+                ann["id"] = coco_manager.annotation_id_counter
+                coco_manager.annotations.append(ann)
+                coco_manager.annotation_id_counter += 1
+            generator.coco_manager.annotations.clear()
+
         # Table codes
         if params["include_table_codes"]:
             table_config = TableCodesConfig(
@@ -209,6 +226,8 @@ class DatasetGenerator:
                 right_margin=params["right_margin"],
                 bottom_margin=params["bottom_margin"],
                 ink_color=ink_color,
+                pair_format=params.get("pair_format", "text_first"),
+                line_spacing_variation=float(params.get("line_spacing_jitter", 0)),
             )
             # The generator stores pair/element annotations in its own coco_manager.
             # Transfer them to the shared one.
@@ -230,6 +249,13 @@ class DatasetGenerator:
         path = self.font_manager.get_font_by_name(font_name)
         return path if path else self.font_manager.get_random_font()
 
+    @staticmethod
+    def _generate_key_value(cipher_type: str, key_type: str) -> str:
+        """Generate a key value based on cipher_type and key_type."""
+        if key_type == "single_char":
+            return random.choice("abcdefghijklmnopqrstuvwxyz0123456789")
+        return str(_generate_key_number(cipher_type))
+
     def _get_cipher_entries(self, cipher_type: str, key_type: str, num_entries: int):
         words = self.db.get_cipher_keys(cipher_type)
         if not words:
@@ -237,6 +263,6 @@ class DatasetGenerator:
         entries = []
         for _ in range(num_entries):
             word = random.choice(words)
-            key_num = _generate_key_number(cipher_type)
-            entries.append((word, str(key_num)))
+            key_val = self._generate_key_value(cipher_type, key_type)
+            entries.append((word, key_val))
         return entries
