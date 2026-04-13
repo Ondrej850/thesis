@@ -50,8 +50,7 @@ class DatasetConfig:
     table_col_spacing_range: Tuple[int, int] = (5, 20)
     table_vertical_lines: str = "random"  # "always", "never", "random"
     table_font_size_range: Tuple[int, int] = (10, 20)
-    table_row_spacing_min_range: Tuple[int, int] = (0, 2)
-    table_row_spacing_max_range: Tuple[int, int] = (0, 6)
+    table_row_spacing_range: Tuple[int, int] = (0, 6)
 
     # Layout
     start_x_range: Tuple[int, int] = (0, 100)
@@ -124,8 +123,7 @@ class DatasetConfig:
             "table_col_spacing": random.randint(*self.table_col_spacing_range),
             "table_vertical_lines": self._resolve_toggle(self.table_vertical_lines),
             "table_font_size": random.randint(*self.table_font_size_range),
-            "table_row_spacing_min": random.randint(*self.table_row_spacing_min_range),
-            "table_row_spacing_max": random.randint(*self.table_row_spacing_max_range),
+            "table_row_spacing": random.randint(*self.table_row_spacing_range),
 
             # Layout
             "start_x": random.randint(*self.start_x_range),
