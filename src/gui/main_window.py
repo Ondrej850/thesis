@@ -272,7 +272,7 @@ class CipherGeneratorGUI:
         self._cp_label_key = ttk.Label(frame, text="Key Type:")
         self._cp_label_key.grid(row=2, column=0, sticky=tk.W, pady=2)
         self.key_type_var = tk.StringVar(value="number")
-        key_types = ['number', 'single_char', 'special_character']
+        key_types = ['number', 'double_char', 'special_character']
         self._cp_key_combo = ttk.Combobox(
             frame, textvariable=self.key_type_var,
             values=key_types, state='readonly', width=25,
@@ -313,6 +313,20 @@ class CipherGeneratorGUI:
         )
         self._cp_font_size_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
 
+        # Line spacing jitter
+        self._cp_label_jitter = ttk.Label(frame, text="Line Spacing Jitter (px):")
+        self._cp_label_jitter.grid(row=6, column=0, sticky=tk.W, pady=2)
+        self.line_spacing_jitter_var = tk.IntVar(value=0)
+        self._cp_jitter_spinbox = ttk.Spinbox(
+            frame, from_=0, to=20, textvariable=self.line_spacing_jitter_var, width=10,
+        )
+        self._cp_jitter_spinbox.grid(row=6, column=1, sticky=tk.W, pady=2)
+        ttk.Label(
+            frame,
+            text="Random +/- variation per line",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=6, column=2, sticky=tk.W, padx=5)
+
     def _on_column_pairs_toggle(self):
         """Enable/disable column-pairs sub-controls based on checkbox."""
         state = "readonly" if self.include_column_pairs_var.get() else "disabled"
@@ -322,6 +336,7 @@ class CipherGeneratorGUI:
         self._cp_pair_fmt_combo.configure(state=state)
         self._cp_entries_spinbox.configure(state=spin_state)
         self._cp_font_size_spinbox.configure(state=spin_state)
+        self._cp_jitter_spinbox.configure(state=spin_state)
 
     def setup_font_config(self, parent):
         """Setup font configuration section"""
@@ -561,28 +576,15 @@ class CipherGeneratorGUI:
                                                  font=("TkDefaultFont", 8), foreground="gray")
         self._bottom_margin_cm_label.grid(row=3, column=2, sticky=tk.W, padx=5)
 
-        # ── Ink color ─────────────────────────────────────────────────
-        # ── Line spacing variation ────────────────────────────────────
-        ttk.Label(frame, text="Line Spacing Jitter (px):").grid(row=4, column=0, sticky=tk.W, pady=2)
-        self.line_spacing_jitter_var = tk.IntVar(value=0)
-        self._line_jitter_spinbox = ttk.Spinbox(
-            frame, from_=0, to=20, textvariable=self.line_spacing_jitter_var, width=10,
-        )
-        self._line_jitter_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
-        ttk.Label(
-            frame,
-            text="Random +/- variation per line",
-            font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=4, column=2, sticky=tk.W, padx=5)
-
         # ── Include title ────────────────────────────────────────────
         self.include_title_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
             frame, text="Add title/header above content",
             variable=self.include_title_var,
-        ).grid(row=5, column=0, columnspan=3, sticky=tk.W, pady=2)
+        ).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=2)
 
-        ttk.Label(frame, text="Ink Color:").grid(row=6, column=0, sticky=tk.W, pady=2)
+        # ── Ink color ─────────────────────────────────────────────────
+        ttk.Label(frame, text="Ink Color:").grid(row=5, column=0, sticky=tk.W, pady=2)
         self.ink_color_var = tk.StringVar(value="dark_brown")
         ink_colors = [
             "dark_brown",      # (44, 36, 22)  – original
@@ -596,12 +598,12 @@ class CipherGeneratorGUI:
             frame, textvariable=self.ink_color_var,
             values=ink_colors, state="readonly", width=25,
         )
-        self._ink_color_combo.grid(row=6, column=1, sticky=(tk.W, tk.E), pady=2)
+        self._ink_color_combo.grid(row=5, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Ink color swatch label (preview)
         self._ink_swatch_label = ttk.Label(frame, text="■ (44, 36, 22)",
                                            font=("TkDefaultFont", 8), foreground="gray")
-        self._ink_swatch_label.grid(row=6, column=2, sticky=tk.W, padx=5)
+        self._ink_swatch_label.grid(row=5, column=2, sticky=tk.W, padx=5)
 
     # ------------------------------------------------------------------
     # Ink colour mapping
@@ -707,7 +709,7 @@ class CipherGeneratorGUI:
         self.include_column_pairs_var.trace_add('write', self._on_visual_config_change)
         self.include_table_codes_var.trace_add('write', self._on_visual_config_change)
         self.pair_format_var.trace_add('write', self._on_visual_config_change)
-        self.line_spacing_jitter_var.trace_add('write', self._on_layout_config_change)
+        self.line_spacing_jitter_var.trace_add('write', self._on_visual_config_change)
         self.include_title_var.trace_add('write', self._on_visual_config_change)
 
         # Table codes: content-changing settings invalidate the code-table cache
@@ -1003,10 +1005,18 @@ class CipherGeneratorGUI:
 
                 words = self.db.get_cipher_keys(cipher_type)
                 if words:
-                    for i in range(additional_needed):
-                        word = random.choice(words)
-                        key_val = self._generate_key_value(cipher_type, key_type)
-                        entries.append((word, key_val))
+                    if key_type == "double_char":
+                        # Collect already-used keys to avoid duplicates
+                        used_keys = {e[1] for e in entries}
+                        new_keys = self._generate_unique_double_char_keys(additional_needed + len(used_keys))
+                        new_keys = [k for k in new_keys if k not in used_keys][:additional_needed]
+                        for k in new_keys:
+                            entries.append((random.choice(words), k))
+                    else:
+                        for i in range(additional_needed):
+                            word = random.choice(words)
+                            key_val = self._generate_key_value(cipher_type, key_type)
+                            entries.append((word, key_val))
                 else:
                     # Fallback for empty database
                     for i in range(additional_needed):
@@ -1023,6 +1033,13 @@ class CipherGeneratorGUI:
         if not words:
             # Generate sample entries if database is empty
             entries = [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
+        elif key_type == "double_char":
+            # Unique two-character keys — generate the full pool upfront
+            unique_keys = self._generate_unique_double_char_keys(num_entries)
+            entries = []
+            for i in range(num_entries):
+                word = random.choice(words)
+                entries.append((word, unique_keys[i]))
         else:
             # Create entries: word + random key number
             entries = []
@@ -1082,16 +1099,27 @@ class CipherGeneratorGUI:
         self._cached_code_table_key = cache_key
         return code_table
 
+    @staticmethod
+    def _generate_unique_double_char_keys(count: int) -> List[str]:
+        """Generate *count* unique two-character keys (e.g. 'ab', 'kz', '3f').
+
+        Characters are drawn from a-z and 0-9 (36 chars → 1296 possible pairs).
+        Each key is used at most once.
+        """
+        chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        pool = [a + b for a in chars for b in chars]
+        random.shuffle(pool)
+        return pool[:count]
+
     def _generate_key_value(self, cipher_type: str, key_type: str) -> str:
         """Generate a random key value based on cipher type and key type.
 
         key_type:
-            'number'           – multi-digit number (existing behaviour)
-            'single_char'      – single letter or digit
+            'number'            – multi-digit number (existing behaviour)
+            'double_char'       – two-character key (unique pool managed by caller)
             'special_character' – kept for backwards compat (same as number)
         """
-        if key_type == "single_char":
-            return random.choice("abcdefghijklmnopqrstuvwxyz0123456789")
+        # double_char is handled at the batch level (_get_cipher_entries)
         return str(self._generate_key_number(cipher_type))
 
     @staticmethod

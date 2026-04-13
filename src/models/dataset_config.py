@@ -28,7 +28,7 @@ class DatasetConfig:
     # Column Pairs
     include_column_pairs: str = "always"  # "always", "never", "random"
     cipher_types: List[str] = field(default_factory=lambda: ["substitution"])
-    key_types: List[str] = field(default_factory=lambda: ["number"])
+    key_types: List[str] = field(default_factory=lambda: ["number", "double_char"])
     pair_formats: List[str] = field(default_factory=lambda: ["text_first", "number_first"])
     num_entries_range: Tuple[int, int] = (10, 50)
     cp_font_size_range: Tuple[int, int] = (10, 20)

@@ -456,22 +456,15 @@ class CipherImageGenerator:
         elems_before = len(renderer.collected_element_bboxes)
 
         # Render each word as a separate tracked element
-        draw = ImageDraw.Draw(img)
         current_x = float(start_x)
         for word_idx, word in enumerate(text.split()):
-            renderer.render_varied_text(
+            end_x, end_y = renderer.render_varied_text(
                 img, word, current_x, start_y,
                 font_path or "", fs, base_color,
                 track_annotations=track_annotations,
             )
-            # Measure the word to advance x
-            try:
-                font = ImageFont.truetype(font_path, fs)
-            except Exception:
-                font = ImageFont.load_default()
-            bb = draw.textbbox((0, 0), word, font=font)
-            word_w = bb[2] - bb[0]
-            current_x += word_w + fs * 0.4  # inter-word gap
+            # Use the actual end_x returned by the renderer (accounts for variations)
+            current_x = end_x + fs * 0.4  # inter-word gap
 
         # Build a section bbox from the newly-added element bboxes
         if track_annotations:

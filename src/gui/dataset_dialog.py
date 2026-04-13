@@ -18,7 +18,7 @@ from src.database.font_manager import FontManager
 # Reusable constants
 ALL_DEFECTS = ["wrinkled_edges", "burns", "stains", "holes", "tears", "yellowing"]
 ALL_CIPHER_TYPES = ["substitution", "bigram", "trigram", "dictionary", "nulls"]
-ALL_KEY_TYPES = ["number", "single_char", "special_character"]
+ALL_KEY_TYPES = ["number", "double_char", "special_character"]
 ALL_VARIATION_LEVELS = ["none", "low", "medium", "high"]
 ALL_COL_SEPARATORS = ["none", "line", "double_line"]
 ALL_KEY_SEPARATORS = ["dots", "dashes", "none"]
@@ -202,6 +202,7 @@ class DatasetDialog(tk.Toplevel):
                                                          defaults=["text_first", "number_first"])
         self._entries_lo, self._entries_hi, row = self._add_range(row, "Num Entries:", 5, 100, 10, 50)
         self._cp_fs_lo, self._cp_fs_hi, row = self._add_range(row, "Font Size:", 8, 36, 10, 20)
+        self._jitter_lo, self._jitter_hi, row = self._add_range(row, "Line Spacing Jitter:", 0, 20, 0, 8)
         return row
 
     def _section_font(self, row: int) -> int:
@@ -237,7 +238,6 @@ class DatasetDialog(tk.Toplevel):
         self._sy_lo, self._sy_hi, row = self._add_range(row, "Start Y:", 0, 400, 0, 100)
         self._rm_lo, self._rm_hi, row = self._add_range(row, "Right Margin:", 0, 400, 0, 80)
         self._bm_lo, self._bm_hi, row = self._add_range(row, "Bottom Margin:", 0, 400, 0, 80)
-        self._jitter_lo, self._jitter_hi, row = self._add_range(row, "Line Spacing Jitter:", 0, 20, 0, 8)
         self._title_toggle, row = self._add_toggle(row, "Include Title:", "random")
         self._ink_vars, row = self._add_checkboxes(row, "Ink Colors:", ALL_INK_COLORS)
         return row

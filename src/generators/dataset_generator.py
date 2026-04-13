@@ -250,19 +250,23 @@ class DatasetGenerator:
         return path if path else self.font_manager.get_random_font()
 
     @staticmethod
-    def _generate_key_value(cipher_type: str, key_type: str) -> str:
-        """Generate a key value based on cipher_type and key_type."""
-        if key_type == "single_char":
-            return random.choice("abcdefghijklmnopqrstuvwxyz0123456789")
-        return str(_generate_key_number(cipher_type))
+    def _generate_unique_double_char_keys(count: int) -> list:
+        """Generate *count* unique two-character keys."""
+        chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        pool = [a + b for a in chars for b in chars]
+        random.shuffle(pool)
+        return pool[:count]
 
     def _get_cipher_entries(self, cipher_type: str, key_type: str, num_entries: int):
         words = self.db.get_cipher_keys(cipher_type)
         if not words:
             return [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
+        if key_type == "double_char":
+            unique_keys = self._generate_unique_double_char_keys(num_entries)
+            return [(random.choice(words), unique_keys[i]) for i in range(num_entries)]
         entries = []
         for _ in range(num_entries):
             word = random.choice(words)
-            key_val = self._generate_key_value(cipher_type, key_type)
+            key_val = str(_generate_key_number(cipher_type))
             entries.append((word, key_val))
         return entries
