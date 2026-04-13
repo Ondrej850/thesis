@@ -230,6 +230,8 @@ class DatasetDialog(tk.Toplevel):
         self._tc_spacing_lo, self._tc_spacing_hi, row = self._add_range(row, "Col Spacing:", 2, 60, 5, 20)
         self._tc_vlines_toggle, row = self._add_toggle(row, "Vertical Lines:", "random")
         self._tc_fs_lo, self._tc_fs_hi, row = self._add_range(row, "Font Size:", 8, 36, 10, 20)
+        self._tc_rsp_min_lo, self._tc_rsp_min_hi, row = self._add_range(row, "Row Spacing Min:", 0, 20, 0, 2)
+        self._tc_rsp_max_lo, self._tc_rsp_max_hi, row = self._add_range(row, "Row Spacing Max:", 0, 20, 0, 6)
         return row
 
     def _section_layout(self, row: int) -> int:
@@ -289,6 +291,8 @@ class DatasetDialog(tk.Toplevel):
             table_col_spacing_range=(self._tc_spacing_lo.get(), self._tc_spacing_hi.get()),
             table_vertical_lines=self._tc_vlines_toggle.get(),
             table_font_size_range=(self._tc_fs_lo.get(), self._tc_fs_hi.get()),
+            table_row_spacing_min_range=(self._tc_rsp_min_lo.get(), self._tc_rsp_min_hi.get()),
+            table_row_spacing_max_range=(self._tc_rsp_max_lo.get(), self._tc_rsp_max_hi.get()),
             # Layout
             start_x_range=(self._sx_lo.get(), self._sx_hi.get()),
             start_y_range=(self._sy_lo.get(), self._sy_hi.get()),

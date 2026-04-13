@@ -185,6 +185,8 @@ class DatasetGenerator:
                 common_codes=params["table_common_codes"],
                 draw_vertical_lines=params["table_vertical_lines"],
                 column_spacing=params["table_col_spacing"],
+                row_spacing_min=params.get("table_row_spacing_min", 0),
+                row_spacing_max=params.get("table_row_spacing_max", 4),
             )
             table_gen = TableCodesGenerator(
                 config=table_config,

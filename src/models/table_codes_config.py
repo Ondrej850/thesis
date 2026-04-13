@@ -32,6 +32,8 @@ class TableCodesConfig:
     common_codes: int = 5               # Codes for common letters (E,T,A,O,I,N,S,H,R)
     draw_vertical_lines: bool = True    # Draw vertical separator lines between columns
     column_spacing: int = 10            # Extra px added to each column beyond widest text
+    row_spacing_min: int = 0            # Minimum extra px between rows (0 = tight grid)
+    row_spacing_max: int = 4            # Maximum extra px between rows
 
     def get_symbols(self) -> List[str]:
         """Return the ordered list of symbols for the selected content type."""

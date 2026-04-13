@@ -152,7 +152,11 @@ class TableCodesGenerator:
 
         for chunk in row_chunks:
             max_codes = max((len(code_table[s]) for s in chunk), default=0)
-            row_h = self.font_size + self.spacing
+            # Pick a random row spacing for this block from the config range
+            rs_min = self.config.row_spacing_min
+            rs_max = self.config.row_spacing_max
+            row_spacing = random.randint(rs_min, rs_max) if rs_max > rs_min else rs_min
+            row_h = self.font_size + row_spacing
             # Estimate block height: header row + sep line + code rows + sep line
             block_h = row_h + 4 + max_codes * row_h + 4
 
@@ -165,7 +169,8 @@ class TableCodesGenerator:
                 break
 
             current_y = self._render_row_block(
-                img, chunk, code_table, x, current_y, col_w, font_path, font, track_annotations
+                img, chunk, code_table, x, current_y, col_w, font_path, font,
+                track_annotations, row_spacing=row_spacing,
             )
             current_y += self.spacing * 3  # Extra gap between row blocks
 
@@ -281,6 +286,7 @@ class TableCodesGenerator:
         font_path: Optional[str],
         font: ImageFont.FreeTypeFont,
         track_annotations: bool,
+        row_spacing: int = 0,
     ) -> int:
         """Render one horizontal block: header row + separator + code rows + closing line.
 
@@ -291,7 +297,7 @@ class TableCodesGenerator:
         Returns the Y position below this block.
         """
         draw = ImageDraw.Draw(img)
-        row_h = self.font_size + self.spacing
+        row_h = self.font_size + row_spacing
         line_x_end = x + len(symbols) * col_w
 
         # Per-column list of element-bbox indices so we can build tight
