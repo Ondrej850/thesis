@@ -200,7 +200,6 @@ class CipherGeneratorGUI:
         # Setup sections
         self.setup_paper_config(config_frame)
         self.setup_cipher_config(config_frame)
-        self.setup_font_config(config_frame)
         self.setup_table_codes_config(config_frame)
         self.setup_layout_config(config_frame)
         self.setup_preview(preview_frame)
@@ -242,6 +241,28 @@ class CipherGeneratorGUI:
             self.defect_vars[defect] = var
             ttk.Checkbutton(defects_frame, text=defect.replace('_', ' ').title(),
                            variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=5)
+
+        # Font selection
+        ttk.Label(frame, text="Font:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.font_selection_var = tk.StringVar(value="Random")
+
+        font_choices = ["Random"] + self.font_manager.get_all_font_names()
+        if not self.font_manager.has_fonts():
+            font_choices = ["System Default (No custom fonts found)"]
+
+        font_combo = ttk.Combobox(frame, textvariable=self.font_selection_var,
+                                  values=font_choices, state='readonly', width=25)
+        font_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Variation Level
+        ttk.Label(frame, text="Variation Level of Text:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.variation_level_var = tk.StringVar(value="medium")
+        variation_combo = ttk.Combobox(frame, textvariable=self.variation_level_var,
+                                       values=['none', 'low', 'medium', 'high'],
+                                       state='readonly', width=25)
+        variation_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+        ttk.Label(frame, text="(Controls character size, position, rotation)",
+                  font=('TkDefaultFont', 8), foreground='gray').grid(row=4, column=2, sticky=tk.W, padx=5)
 
     def setup_cipher_config(self, parent):
         """Setup column-pairs cipher configuration section."""
@@ -327,6 +348,44 @@ class CipherGeneratorGUI:
             font=("TkDefaultFont", 8), foreground="gray",
         ).grid(row=6, column=2, sticky=tk.W, padx=5)
 
+        # Column separator
+        self._cp_label_col_sep = ttk.Label(frame, text="Column Separator:")
+        self._cp_label_col_sep.grid(row=7, column=0, sticky=tk.W, pady=2)
+        self.col_sep_var = tk.StringVar(value="line")
+        self._cp_col_sep_combo = ttk.Combobox(
+            frame, textvariable=self.col_sep_var,
+            values=['none', 'line', 'double_line'], state='readonly', width=25,
+        )
+        self._cp_col_sep_combo.grid(row=7, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Key separator
+        self._cp_label_key_sep = ttk.Label(frame, text="Key Separator:")
+        self._cp_label_key_sep.grid(row=8, column=0, sticky=tk.W, pady=2)
+        self.key_sep_var = tk.StringVar(value="dashes")
+        self._cp_key_sep_combo = ttk.Combobox(
+            frame, textvariable=self.key_sep_var,
+            values=['dots', 'dashes', 'none'], state='readonly', width=25,
+        )
+        self._cp_key_sep_combo.grid(row=8, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Dash count
+        self._cp_label_dash_count = ttk.Label(frame, text="Dash Count:")
+        self._cp_label_dash_count.grid(row=9, column=0, sticky=tk.W, pady=2)
+        self.dash_count_var = tk.IntVar(value=3)
+        self._cp_dash_count_spinbox = ttk.Spinbox(
+            frame, from_=1, to=10, textvariable=self.dash_count_var, width=10,
+        )
+        self._cp_dash_count_spinbox.grid(row=9, column=1, sticky=tk.W, pady=2)
+
+        # Line spacing
+        self._cp_label_spacing = ttk.Label(frame, text="Line Spacing:")
+        self._cp_label_spacing.grid(row=10, column=0, sticky=tk.W, pady=2)
+        self.spacing_var = tk.IntVar(value=8)
+        self._cp_spacing_spinbox = ttk.Spinbox(
+            frame, from_=5, to=20, textvariable=self.spacing_var, width=10,
+        )
+        self._cp_spacing_spinbox.grid(row=10, column=1, sticky=tk.W, pady=2)
+
     def _on_column_pairs_toggle(self):
         """Enable/disable column-pairs sub-controls based on checkbox."""
         state = "readonly" if self.include_column_pairs_var.get() else "disabled"
@@ -337,68 +396,15 @@ class CipherGeneratorGUI:
         self._cp_entries_spinbox.configure(state=spin_state)
         self._cp_font_size_spinbox.configure(state=spin_state)
         self._cp_jitter_spinbox.configure(state=spin_state)
-
-    def setup_font_config(self, parent):
-        """Setup font configuration section"""
-        section = CollapsibleSection(parent, "3. Font Configuration")
-        section.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame = section.content
-
-        # Font selection
-        ttk.Label(frame, text="Font:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.font_selection_var = tk.StringVar(value="Random")
-
-        font_choices = ["Random"] + self.font_manager.get_all_font_names()
-        if not self.font_manager.has_fonts():
-            font_choices = ["System Default (No custom fonts found)"]
-
-        font_combo = ttk.Combobox(frame, textvariable=self.font_selection_var,
-                                  values=font_choices, state='readonly', width=25)
-        font_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Variation Level
-        ttk.Label(frame, text="Variation Level:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.variation_level_var = tk.StringVar(value="medium")
-        variation_combo = ttk.Combobox(frame, textvariable=self.variation_level_var,
-                                       values=['none', 'low', 'medium', 'high'],
-                                       state='readonly', width=25)
-        variation_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Add tooltip/help
-        help_label = ttk.Label(frame, text="(Controls character size, position, rotation)",
-                               font=('TkDefaultFont', 8), foreground='gray')
-        help_label.grid(row=1, column=2, sticky=tk.W, padx=5)
-
-        # Column separator
-        ttk.Label(frame, text="Column Separator:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.col_sep_var = tk.StringVar(value="line")
-        col_seps = ['none', 'line', 'double_line']
-        ttk.Combobox(frame, textvariable=self.col_sep_var, values=col_seps,
-                     state='readonly', width=25).grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Key separator
-        ttk.Label(frame, text="Key Separator:").grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.key_sep_var = tk.StringVar(value="dashes")
-        key_seps = ['dots', 'dashes', 'none']
-        ttk.Combobox(frame, textvariable=self.key_sep_var, values=key_seps,
-                     state='readonly', width=25).grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Dash count
-        ttk.Label(frame, text="Dash Count:").grid(row=4, column=0, sticky=tk.W, pady=2)
-        self.dash_count_var = tk.IntVar(value=3)
-        ttk.Spinbox(frame, from_=1, to=10, textvariable=self.dash_count_var,
-                    width=10).grid(row=4, column=1, sticky=tk.W, pady=2)
-
-        # Spacing
-        ttk.Label(frame, text="Line Spacing:").grid(row=5, column=0, sticky=tk.W, pady=2)
-        self.spacing_var = tk.IntVar(value=8)
-        ttk.Spinbox(frame, from_=5, to=20, textvariable=self.spacing_var,
-                    width=10).grid(row=5, column=1, sticky=tk.W, pady=2)
+        self._cp_col_sep_combo.configure(state=state)
+        self._cp_key_sep_combo.configure(state=state)
+        self._cp_dash_count_spinbox.configure(state=spin_state)
+        self._cp_spacing_spinbox.configure(state=spin_state)
 
     def setup_table_codes_config(self, parent):
-        """Setup table codes configuration section (section 4)."""
-        section = CollapsibleSection(parent, "4. Table Codes")
-        section.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+        """Setup table codes configuration section (section 3)."""
+        section = CollapsibleSection(parent, "3. Table Codes")
+        section.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
         frame = section.content
 
         # Enable / disable checkbox (off by default — opt-in feature)
@@ -542,9 +548,9 @@ class CipherGeneratorGUI:
         return int(round(cm * CipherGeneratorGUI.PX_PER_CM))
 
     def setup_layout_config(self, parent):
-        """Setup layout & ink configuration section (section 5)."""
-        section = CollapsibleSection(parent, "5. Layout & Ink")
-        section.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        """Setup layout & ink configuration section (section 4)."""
+        section = CollapsibleSection(parent, "4. Layout & Ink")
+        section.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
         frame = section.content
 
         # ── Start position X ──────────────────────────────────────────
