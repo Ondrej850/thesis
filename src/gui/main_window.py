@@ -506,6 +506,20 @@ class CipherGeneratorGUI:
             font=("TkDefaultFont", 8), foreground="gray",
         ).grid(row=8, column=3, sticky=tk.W, padx=5)
 
+        # 2×2 pair grid layout
+        self.table_pair_grid_var = tk.BooleanVar(value=False)
+        self._tc_pair_grid_check = ttk.Checkbutton(
+            frame,
+            text="2×2 code grid (2 codes per row, uniform codes only)",
+            variable=self.table_pair_grid_var,
+        )
+        self._tc_pair_grid_check.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=2)
+        ttk.Label(
+            frame,
+            text="Requires 'More codes' unchecked",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=9, column=3, sticky=tk.W, padx=5)
+
         # Sync enabled/disabled states on startup
         self._on_table_codes_toggle()
 
@@ -521,16 +535,19 @@ class CipherGeneratorGUI:
         self._tc_vlines_check.configure(state="normal" if enabled else "disabled")
         self._tc_font_size_spinbox.configure(state=spin_state)
         self._tc_row_sp_spinbox.configure(state=spin_state)
-        # Also honour the boost-spinbox state within the enabled section
+        # Also honour the boost-spinbox and pair-grid states within the enabled section
         if enabled:
             self._on_table_boost_toggle()
         else:
             self._common_codes_spinbox.configure(state="disabled")
+            self._tc_pair_grid_check.configure(state="disabled")
 
     def _on_table_boost_toggle(self):
-        """Show or hide the common-codes spinbox depending on the boost checkbox."""
-        state = "normal" if self.table_common_boost_var.get() else "disabled"
-        self._common_codes_spinbox.configure(state=state)
+        """Update common-codes spinbox and pair-grid checkbox based on boost toggle."""
+        boost_on = self.table_common_boost_var.get()
+        self._common_codes_spinbox.configure(state="normal" if boost_on else "disabled")
+        # Pair grid is only available when boost is off (uniform code counts)
+        self._tc_pair_grid_check.configure(state="disabled" if boost_on else "normal")
 
     # ------------------------------------------------------------------
     # Pixel ↔ centimetre helpers  (96 DPI assumed)
@@ -738,10 +755,11 @@ class CipherGeneratorGUI:
         self.table_num_codes_var.trace_add('write', self._on_table_content_change)
         self.table_common_boost_var.trace_add('write', self._on_table_content_change)
         self.table_common_codes_var.trace_add('write', self._on_table_content_change)
-        # Column spacing, vertical lines, and row spacing only affect layout/visuals
+        # Column spacing, vertical lines, row spacing, and pair-grid only affect layout/visuals
         self.table_col_spacing_var.trace_add('write', self._on_visual_config_change)
         self.table_vertical_lines_var.trace_add('write', self._on_visual_config_change)
         self.table_row_spacing_var.trace_add('write', self._on_visual_config_change)
+        self.table_pair_grid_var.trace_add('write', self._on_visual_config_change)
 
         # Layout & ink listeners (visual only)
         self.start_x_var.trace_add('write', self._on_layout_config_change)
@@ -1088,6 +1106,7 @@ class CipherGeneratorGUI:
             draw_vertical_lines=self.table_vertical_lines_var.get(),
             column_spacing=self.table_col_spacing_var.get(),
             row_spacing=self.table_row_spacing_var.get(),
+            use_pair_grid=self.table_pair_grid_var.get() and not self.table_common_boost_var.get(),
         )
 
     def _get_or_generate_code_table(self, table_config: TableCodesConfig) -> dict:

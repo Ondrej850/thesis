@@ -30,6 +30,7 @@ Path: src/generators/table_codes_generator.py
 
 from __future__ import annotations
 
+import math
 import os
 import random
 import sys
@@ -153,10 +154,13 @@ class TableCodesGenerator:
         line_h = self._get_line_height(font)
 
         for chunk in row_chunks:
+
             max_codes = max((len(code_table[s]) for s in chunk), default=0)
             row_h = line_h + self.config.row_spacing
+            # In pair-grid mode codes are 2 per visual row, so half as many rows
+            visual_code_rows = math.ceil(max_codes / 2) if self.config.use_pair_grid else max_codes
             # Estimate block height: header row + sep line + code rows + sep line
-            block_h = row_h + (2 + self.config.row_spacing) + max_codes * row_h + (1 + self.config.row_spacing)
+            block_h = row_h + (2 + self.config.row_spacing) + visual_code_rows * row_h + (1 + self.config.row_spacing)
 
             if current_y + block_h > max_y:
                 # Would overflow — stop here, don't render partial blocks
@@ -271,15 +275,27 @@ class TableCodesGenerator:
         code_table: Dict[str, List[int]],
         font: ImageFont.FreeTypeFont,
     ) -> int:
-        """Calculate a uniform column width from the widest symbol and code across ALL columns."""
-        max_w = self.font_size  # Minimum
+        """Calculate a uniform column width from the widest symbol and code across ALL columns.
+
+        In pair-grid mode the column must accommodate two code numbers side-by-side,
+        so the width is: max(symbol_width, 2 * max_code_width + inter_code_gap).
+        """
+        max_sym_w = self.font_size  # Minimum
+        max_code_w = self.font_size
         for sym in symbols:
             w, _ = self._measure_text(draw, sym, font)
-            max_w = max(max_w, w)
+            max_sym_w = max(max_sym_w, w)
             for code in code_table[sym]:
                 w, _ = self._measure_text(draw, str(code), font)
-                max_w = max(max_w, w)
-        return max_w + self.config.column_spacing  # text width + user-controlled spacing
+                max_code_w = max(max_code_w, w)
+
+        if self.config.use_pair_grid:
+            inter_gap = max(4, self.font_size // 4)  # Small gap between the two codes
+            min_w = max(max_sym_w, 2 * max_code_w + inter_gap)
+        else:
+            min_w = max(max_sym_w, max_code_w)
+
+        return min_w + self.config.column_spacing  # text width + user-controlled spacing
 
     def _render_row_block(
         self,
@@ -332,25 +348,71 @@ class TableCodesGenerator:
         current_y += 2 + self.config.row_spacing
 
         # ── 3. Code rows ─────────────────────────────────────────────────
-        max_codes_in_row = max((len(code_table[sym]) for sym in symbols), default=0)
-        for code_row_idx in range(max_codes_in_row):
-            for col_idx, sym in enumerate(symbols):
-                codes = code_table[sym]
-                if code_row_idx >= len(codes):
-                    continue
-                before = len(elems)
-                col_x = x + col_idx * col_w
-                code_str = str(codes[code_row_idx])
-                text_w, _ = self._measure_text(draw, code_str, font)
-                centered_x = col_x + (col_w - text_w) // 2
-                self._text_renderer.render_varied_text(
-                    img, code_str, centered_x, current_y,
-                    font_path or "", self.font_size, self.BASE_COLOR,
-                    track_annotations=track_annotations,
-                )
-                if track_annotations and len(elems) > before:
-                    col_elem_indices[col_idx].append(len(elems) - 1)
-            current_y += row_h
+        max_codes_in_block = max((len(code_table[sym]) for sym in symbols), default=0)
+
+        if self.config.use_pair_grid:
+            # Pair-grid mode: two codes side-by-side per visual row.
+            # num_visual_rows = ceil(max_codes / 2)
+
+            inter_gap = max(4, self.font_size // 4)
+            half_w = (col_w - self.config.column_spacing - inter_gap) // 2
+            num_visual_rows = math.ceil(max_codes_in_block / 2)
+            max_codes_in_row = num_visual_rows  # used later for section-bbox label
+
+            for vrow in range(num_visual_rows):
+                for col_idx, sym in enumerate(symbols):
+                    codes = code_table[sym]
+                    col_x = x + col_idx * col_w
+                    # Left sub-cell: codes[2*vrow]
+                    left_idx = 2 * vrow
+                    if left_idx < len(codes):
+                        before = len(elems)
+                        code_str = str(codes[left_idx])
+                        text_w, _ = self._measure_text(draw, code_str, font)
+                        draw_x = col_x + (half_w - text_w) // 2
+                        self._text_renderer.render_varied_text(
+                            img, code_str, draw_x, current_y,
+                            font_path or "", self.font_size, self.BASE_COLOR,
+                            track_annotations=track_annotations,
+                        )
+                        if track_annotations and len(elems) > before:
+                            col_elem_indices[col_idx].append(len(elems) - 1)
+                    # Right sub-cell: codes[2*vrow + 1]
+                    right_idx = 2 * vrow + 1
+                    if right_idx < len(codes):
+                        before = len(elems)
+                        code_str = str(codes[right_idx])
+                        text_w, _ = self._measure_text(draw, code_str, font)
+                        draw_x = col_x + half_w + inter_gap + (half_w - text_w) // 2
+                        self._text_renderer.render_varied_text(
+                            img, code_str, draw_x, current_y,
+                            font_path or "", self.font_size, self.BASE_COLOR,
+                            track_annotations=track_annotations,
+                        )
+                        if track_annotations and len(elems) > before:
+                            col_elem_indices[col_idx].append(len(elems) - 1)
+                current_y += row_h
+        else:
+            # Standard mode: one code per visual row, centred in the column.
+            max_codes_in_row = max_codes_in_block
+            for code_row_idx in range(max_codes_in_block):
+                for col_idx, sym in enumerate(symbols):
+                    codes = code_table[sym]
+                    if code_row_idx >= len(codes):
+                        continue
+                    before = len(elems)
+                    col_x = x + col_idx * col_w
+                    code_str = str(codes[code_row_idx])
+                    text_w, _ = self._measure_text(draw, code_str, font)
+                    centered_x = col_x + (col_w - text_w) // 2
+                    self._text_renderer.render_varied_text(
+                        img, code_str, centered_x, current_y,
+                        font_path or "", self.font_size, self.BASE_COLOR,
+                        track_annotations=track_annotations,
+                    )
+                    if track_annotations and len(elems) > before:
+                        col_elem_indices[col_idx].append(len(elems) - 1)
+                current_y += row_h
 
         # ── 4. Vertical column separator lines ───────────────────────────
         if self.config.draw_vertical_lines:
