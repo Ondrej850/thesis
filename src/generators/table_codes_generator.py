@@ -150,9 +150,11 @@ class TableCodesGenerator:
         max_y = paper_height - bottom_margin
         current_y = y
 
+        line_h = self._get_line_height(font)
+
         for chunk in row_chunks:
             max_codes = max((len(code_table[s]) for s in chunk), default=0)
-            row_h = self.font_size + self.config.row_spacing
+            row_h = line_h + self.config.row_spacing
             # Estimate block height: header row + sep line + code rows + sep line
             block_h = row_h + (2 + self.config.row_spacing) + max_codes * row_h + (1 + self.config.row_spacing)
 
@@ -185,6 +187,14 @@ class TableCodesGenerator:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _get_line_height(self, font: ImageFont.FreeTypeFont) -> int:
+        """Return the actual line height from font metrics, not the nominal font_size."""
+        try:
+            ascent, descent = font.getmetrics()
+            return ascent + descent
+        except Exception:
+            return self.font_size
 
     def _load_font(self, font_path: Optional[str], size: int) -> ImageFont.FreeTypeFont:
         """Load a font with graceful fallback."""
@@ -292,7 +302,7 @@ class TableCodesGenerator:
         Returns the Y position below this block.
         """
         draw = ImageDraw.Draw(img)
-        row_h = self.font_size + self.config.row_spacing
+        row_h = self._get_line_height(font) + self.config.row_spacing
         line_x_end = x + len(symbols) * col_w
 
         # Per-column list of element-bbox indices so we can build tight
