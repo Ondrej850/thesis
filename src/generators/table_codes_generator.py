@@ -154,7 +154,7 @@ class TableCodesGenerator:
             max_codes = max((len(code_table[s]) for s in chunk), default=0)
             row_h = self.font_size + self.config.row_spacing
             # Estimate block height: header row + sep line + code rows + sep line
-            block_h = row_h + 4 + max_codes * row_h + 4
+            block_h = row_h + (2 + self.config.row_spacing) + max_codes * row_h + (1 + self.config.row_spacing)
 
             if current_y + block_h > max_y:
                 # Would overflow — stop here, don't render partial blocks
@@ -168,7 +168,7 @@ class TableCodesGenerator:
                 img, chunk, code_table, x, current_y, col_w, font_path, font,
                 track_annotations,
             )
-            current_y += self.spacing * 3  # Extra gap between row blocks
+            current_y += self.config.row_spacing
 
         return current_y
 
@@ -319,7 +319,7 @@ class TableCodesGenerator:
 
         # ── 2. Separator line below header ──────────────────────────────
         self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
-        current_y += 4
+        current_y += 2 + self.config.row_spacing
 
         # ── 3. Code rows ─────────────────────────────────────────────────
         max_codes_in_row = max((len(code_table[sym]) for sym in symbols), default=0)
@@ -390,6 +390,6 @@ class TableCodesGenerator:
 
         # ── 6. Closing separator line ────────────────────────────────────
         self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
-        current_y += 2
+        current_y += 1 + self.config.row_spacing
 
         return current_y
