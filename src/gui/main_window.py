@@ -386,10 +386,38 @@ class CipherGeneratorGUI:
         )
         self._cp_spacing_spinbox.grid(row=10, column=1, sticky=tk.W, pady=2)
 
+        # Section title
+        self.cp_section_title_var = tk.BooleanVar(value=False)
+        self._cp_title_check = ttk.Checkbutton(
+            frame,
+            text="Add title above column pairs",
+            variable=self.cp_section_title_var,
+            command=self._on_cp_section_title_toggle,
+        )
+        self._cp_title_check.grid(row=11, column=0, columnspan=3, sticky=tk.W, pady=(6, 0))
+
+        self.cp_section_title_text = tk.StringVar(value="")
+        self._cp_title_entry = ttk.Entry(frame, textvariable=self.cp_section_title_text, width=22)
+        self._cp_title_entry.grid(row=12, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        ttk.Label(
+            frame, text="(empty = random)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=12, column=2, sticky=tk.W)
+
+        self._cp_title_random_btn = ttk.Button(
+            frame, text="Random",
+            command=lambda: self.cp_section_title_text.set(
+                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+            ),
+            width=8,
+        )
+        self._cp_title_random_btn.grid(row=12, column=3, sticky=tk.W, padx=4, pady=2)
+
     def _on_column_pairs_toggle(self):
         """Enable/disable column-pairs sub-controls based on checkbox."""
-        state = "readonly" if self.include_column_pairs_var.get() else "disabled"
-        spin_state = "normal" if self.include_column_pairs_var.get() else "disabled"
+        enabled = self.include_column_pairs_var.get()
+        state = "readonly" if enabled else "disabled"
+        spin_state = "normal" if enabled else "disabled"
         self._cp_cipher_combo.configure(state=state)
         self._cp_key_combo.configure(state=state)
         self._cp_pair_fmt_combo.configure(state=state)
@@ -400,6 +428,18 @@ class CipherGeneratorGUI:
         self._cp_key_sep_combo.configure(state=state)
         self._cp_dash_count_spinbox.configure(state=spin_state)
         self._cp_spacing_spinbox.configure(state=spin_state)
+        self._cp_title_check.configure(state="normal" if enabled else "disabled")
+        if enabled:
+            self._on_cp_section_title_toggle()
+        else:
+            self._cp_title_entry.configure(state="disabled")
+            self._cp_title_random_btn.configure(state="disabled")
+
+    def _on_cp_section_title_toggle(self):
+        """Enable/disable the column-pairs title entry based on its checkbox."""
+        active = self.cp_section_title_var.get()
+        self._cp_title_entry.configure(state="normal" if active else "disabled")
+        self._cp_title_random_btn.configure(state="normal" if active else "disabled")
 
     def setup_table_codes_config(self, parent):
         """Setup table codes configuration section (section 3)."""
@@ -520,6 +560,33 @@ class CipherGeneratorGUI:
             font=("TkDefaultFont", 8), foreground="gray",
         ).grid(row=9, column=3, sticky=tk.W, padx=5)
 
+        # Section title
+        self.table_section_title_var = tk.BooleanVar(value=False)
+        self._tc_title_check = ttk.Checkbutton(
+            frame,
+            text="Add title above table",
+            variable=self.table_section_title_var,
+            command=self._on_table_section_title_toggle,
+        )
+        self._tc_title_check.grid(row=10, column=0, columnspan=3, sticky=tk.W, pady=(6, 0))
+
+        self.table_section_title_text = tk.StringVar(value="")
+        self._tc_title_entry = ttk.Entry(frame, textvariable=self.table_section_title_text, width=22)
+        self._tc_title_entry.grid(row=11, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        ttk.Label(
+            frame, text="(empty = random)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=11, column=2, sticky=tk.W)
+
+        self._tc_title_random_btn = ttk.Button(
+            frame, text="Random",
+            command=lambda: self.table_section_title_text.set(
+                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+            ),
+            width=8,
+        )
+        self._tc_title_random_btn.grid(row=11, column=3, sticky=tk.W, padx=4, pady=2)
+
         # Sync enabled/disabled states on startup
         self._on_table_codes_toggle()
 
@@ -535,12 +602,16 @@ class CipherGeneratorGUI:
         self._tc_vlines_check.configure(state="normal" if enabled else "disabled")
         self._tc_font_size_spinbox.configure(state=spin_state)
         self._tc_row_sp_spinbox.configure(state=spin_state)
-        # Also honour the boost-spinbox and pair-grid states within the enabled section
+        self._tc_title_check.configure(state="normal" if enabled else "disabled")
+        # Also honour the boost-spinbox, pair-grid, and title states within the enabled section
         if enabled:
             self._on_table_boost_toggle()
+            self._on_table_section_title_toggle()
         else:
             self._common_codes_spinbox.configure(state="disabled")
             self._tc_pair_grid_check.configure(state="disabled")
+            self._tc_title_entry.configure(state="disabled")
+            self._tc_title_random_btn.configure(state="disabled")
 
     def _on_table_boost_toggle(self):
         """Update common-codes spinbox and pair-grid checkbox based on boost toggle."""
@@ -548,6 +619,12 @@ class CipherGeneratorGUI:
         self._common_codes_spinbox.configure(state="normal" if boost_on else "disabled")
         # Pair grid is only available when boost is off (uniform code counts)
         self._tc_pair_grid_check.configure(state="disabled" if boost_on else "normal")
+
+    def _on_table_section_title_toggle(self):
+        """Enable/disable the table title entry based on its checkbox."""
+        active = self.table_section_title_var.get()
+        self._tc_title_entry.configure(state="normal" if active else "disabled")
+        self._tc_title_random_btn.configure(state="normal" if active else "disabled")
 
     # ------------------------------------------------------------------
     # Pixel ↔ centimetre helpers  (96 DPI assumed)
@@ -749,6 +826,11 @@ class CipherGeneratorGUI:
         self.pair_format_var.trace_add('write', self._on_visual_config_change)
         self.line_spacing_jitter_var.trace_add('write', self._on_visual_config_change)
         self.include_title_var.trace_add('write', self._on_visual_config_change)
+        # Section title toggles and text fields
+        self.table_section_title_var.trace_add('write', self._on_visual_config_change)
+        self.table_section_title_text.trace_add('write', self._on_visual_config_change)
+        self.cp_section_title_var.trace_add('write', self._on_visual_config_change)
+        self.cp_section_title_text.trace_add('write', self._on_visual_config_change)
 
         # Table codes: content-changing settings invalidate the code-table cache
         self.table_content_var.trace_add('write', self._on_table_content_change)
@@ -951,6 +1033,16 @@ class CipherGeneratorGUI:
 
             # ── Table codes ─────────────────────────────────────────────
             if include_table:
+                if self.table_section_title_var.get():
+                    title_text = self.table_section_title_text.get().strip() or None
+                    current_y = generator.render_title(
+                        img, start_x, current_y,
+                        font_path=selected_font_path,
+                        use_variations=use_variations,
+                        track_annotations=True,
+                        ink_color=ink_color,
+                        title_text=title_text,
+                    )
                 table_config = self._build_table_config()
                 code_table = self._get_or_generate_code_table(table_config)
                 current_y = generator.render_table_codes(
@@ -967,6 +1059,16 @@ class CipherGeneratorGUI:
 
             # ── Column pairs (rendered below table, or from top if no table) ──
             if include_pairs:
+                if self.cp_section_title_var.get():
+                    title_text = self.cp_section_title_text.get().strip() or None
+                    current_y = generator.render_title(
+                        img, start_x, current_y,
+                        font_path=selected_font_path,
+                        use_variations=use_variations,
+                        track_annotations=True,
+                        ink_color=ink_color,
+                        title_text=title_text,
+                    )
                 cipher_entries = self._get_cipher_entries()
                 generator.render_cipher_text(
                     img, cipher_entries, start_x, current_y,

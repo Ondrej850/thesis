@@ -97,7 +97,6 @@ class DatasetDialog(tk.Toplevel):
         row = self._section_general(row)
         row = self._section_paper(row)
         row = self._section_column_pairs(row)
-        row = self._section_font(row)
         row = self._section_table_codes(row)
         row = self._section_layout(row)
 
@@ -189,6 +188,10 @@ class DatasetDialog(tk.Toplevel):
         self._aging_lo, self._aging_hi, row = self._add_range(row, "Aging Level:", 0, 100, 20, 80)
         self._paper_type_vars, row = self._add_checkboxes(row, "Paper Types:", self.paper_types)
         self._defects_toggle, row = self._add_toggle(row, "Defects:", "random")
+        font_names = ["Random"] + self.font_manager.get_all_font_names()
+        self._font_vars, row = self._add_checkboxes(row, "Fonts:", font_names, defaults=["Random"])
+        self._var_level_vars, row = self._add_checkboxes(row, "Variation Levels:", ALL_VARIATION_LEVELS,
+                                                          defaults=["low", "medium", "high"])
         return row
 
     def _section_column_pairs(self, row: int) -> int:
@@ -202,21 +205,14 @@ class DatasetDialog(tk.Toplevel):
                                                          defaults=["text_first", "number_first"])
         self._entries_lo, self._entries_hi, row = self._add_range(row, "Num Entries:", 5, 100, 10, 50)
         self._cp_fs_lo, self._cp_fs_hi, row = self._add_range(row, "Font Size:", 8, 36, 10, 20)
-        self._jitter_lo, self._jitter_hi, row = self._add_range(row, "Line Spacing Jitter:", 0, 20, 0, 8)
-        return row
-
-    def _section_font(self, row: int) -> int:
-        row = self._add_section_label(row, "Font & Style")
-        font_names = ["Random"] + self.font_manager.get_all_font_names()
-        self._font_vars, row = self._add_checkboxes(row, "Fonts:", font_names, defaults=["Random"])
-        self._var_level_vars, row = self._add_checkboxes(row, "Variation Levels:", ALL_VARIATION_LEVELS,
-                                                          defaults=["low", "medium", "high"])
         self._col_sep_vars, row = self._add_checkboxes(row, "Column Separators:", ALL_COL_SEPARATORS,
                                                         defaults=["none", "line"])
         self._key_sep_vars, row = self._add_checkboxes(row, "Key Separators:", ALL_KEY_SEPARATORS,
                                                         defaults=["dots", "dashes"])
         self._dash_lo, self._dash_hi, row = self._add_range(row, "Dash Count:", 1, 10, 1, 5)
         self._spacing_lo, self._spacing_hi, row = self._add_range(row, "Line Spacing:", 5, 20, 5, 12)
+        self._jitter_lo, self._jitter_hi, row = self._add_range(row, "Line Spacing Jitter:", 0, 20, 0, 8)
+        self._cp_title_toggle, row = self._add_toggle(row, "Section Title:", "never")
         return row
 
     def _section_table_codes(self, row: int) -> int:
@@ -231,6 +227,11 @@ class DatasetDialog(tk.Toplevel):
         self._tc_vlines_toggle, row = self._add_toggle(row, "Vertical Lines:", "random")
         self._tc_fs_lo, self._tc_fs_hi, row = self._add_range(row, "Font Size:", 8, 36, 10, 20)
         self._tc_rsp_lo, self._tc_rsp_hi, row = self._add_range(row, "Row Spacing:", 0, 20, 0, 6)
+        self._tc_pair_grid_toggle, row = self._add_toggle(row, "2×2 Pair Grid:", "never")
+        ttk.Label(self._inner, text="(ignored when Common Boost = always)",
+                  font=("TkDefaultFont", 8), foreground="gray").grid(
+            row=row - 1, column=2, sticky=tk.W, padx=5)
+        self._tc_title_toggle, row = self._add_toggle(row, "Section Title:", "never")
         return row
 
     def _section_layout(self, row: int) -> int:
@@ -274,6 +275,7 @@ class DatasetDialog(tk.Toplevel):
             pair_formats=self._checked(self._pair_fmt_vars) or ["text_first"],
             num_entries_range=(self._entries_lo.get(), self._entries_hi.get()),
             cp_font_size_range=(self._cp_fs_lo.get(), self._cp_fs_hi.get()),
+            include_cp_title=self._cp_title_toggle.get(),
             # Font
             fonts=self._checked(self._font_vars) or ["Random"],
             variation_levels=self._checked(self._var_level_vars) or ["medium"],
@@ -291,6 +293,8 @@ class DatasetDialog(tk.Toplevel):
             table_vertical_lines=self._tc_vlines_toggle.get(),
             table_font_size_range=(self._tc_fs_lo.get(), self._tc_fs_hi.get()),
             table_row_spacing_range=(self._tc_rsp_lo.get(), self._tc_rsp_hi.get()),
+            table_pair_grid=self._tc_pair_grid_toggle.get(),
+            include_table_title=self._tc_title_toggle.get(),
             # Layout
             start_x_range=(self._sx_lo.get(), self._sx_hi.get()),
             start_y_range=(self._sy_lo.get(), self._sy_hi.get()),

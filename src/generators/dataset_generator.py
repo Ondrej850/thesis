@@ -178,6 +178,21 @@ class DatasetGenerator:
 
         # Table codes
         if params["include_table_codes"]:
+            if params.get("include_table_title", False):
+                current_y = generator.render_title(
+                    img, params["start_x"], current_y,
+                    font_path=font_path,
+                    use_variations=use_variations,
+                    track_annotations=True,
+                    ink_color=ink_color,
+                )
+                for ann in generator.coco_manager.annotations:
+                    ann["image_id"] = image_id
+                    ann["id"] = coco_manager.annotation_id_counter
+                    coco_manager.annotations.append(ann)
+                    coco_manager.annotation_id_counter += 1
+                generator.coco_manager.annotations.clear()
+
             table_config = TableCodesConfig(
                 content_type=params["table_content_type"],
                 num_codes=params["table_num_codes"],
@@ -186,6 +201,7 @@ class DatasetGenerator:
                 draw_vertical_lines=params["table_vertical_lines"],
                 column_spacing=params["table_col_spacing"],
                 row_spacing=params.get("table_row_spacing", 0),
+                use_pair_grid=params.get("table_pair_grid", False),
             )
             table_gen = TableCodesGenerator(
                 config=table_config,
@@ -212,6 +228,21 @@ class DatasetGenerator:
 
         # Column pairs
         if params["include_column_pairs"]:
+            if params.get("include_cp_title", False):
+                current_y = generator.render_title(
+                    img, params["start_x"], current_y,
+                    font_path=font_path,
+                    use_variations=use_variations,
+                    track_annotations=True,
+                    ink_color=ink_color,
+                )
+                for ann in generator.coco_manager.annotations:
+                    ann["image_id"] = image_id
+                    ann["id"] = coco_manager.annotation_id_counter
+                    coco_manager.annotations.append(ann)
+                    coco_manager.annotation_id_counter += 1
+                generator.coco_manager.annotations.clear()
+
             entries = self._get_cipher_entries(
                 params["cipher_type"], params["key_type"], params["num_entries"]
             )

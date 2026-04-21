@@ -51,6 +51,11 @@ class DatasetConfig:
     table_vertical_lines: str = "random"  # "always", "never", "random"
     table_font_size_range: Tuple[int, int] = (10, 20)
     table_row_spacing_range: Tuple[int, int] = (0, 6)
+    table_pair_grid: str = "never"       # "always", "never", "random" — only active when boost is off
+    include_table_title: str = "never"   # "always", "never", "random"
+
+    # Column pairs section title
+    include_cp_title: str = "never"      # "always", "never", "random"
 
     # Layout
     start_x_range: Tuple[int, int] = (0, 100)
@@ -92,6 +97,10 @@ class DatasetConfig:
         else:  # random
             defects = [d for d in self.defects_pool if self._rand_bool()]
 
+        # Table codes: pair grid is only valid when common boost is off
+        table_common_boost = self._resolve_toggle(self.table_common_boost)
+        table_pair_grid = self._resolve_toggle(self.table_pair_grid) if not table_common_boost else False
+
         return {
             # Paper
             "aging_level": random.randint(*self.aging_level_range),
@@ -105,6 +114,7 @@ class DatasetConfig:
             "pair_format": random.choice(self.pair_formats),
             "num_entries": random.randint(*self.num_entries_range),
             "cp_font_size": random.randint(*self.cp_font_size_range),
+            "include_cp_title": self._resolve_toggle(self.include_cp_title),
 
             # Font
             "font_name": random.choice(self.fonts),
@@ -118,12 +128,14 @@ class DatasetConfig:
             "include_table_codes": include_table,
             "table_content_type": random.choice(self.table_content_types),
             "table_num_codes": random.randint(*self.table_num_codes_range),
-            "table_common_boost": self._resolve_toggle(self.table_common_boost),
+            "table_common_boost": table_common_boost,
             "table_common_codes": random.randint(*self.table_common_codes_range),
             "table_col_spacing": random.randint(*self.table_col_spacing_range),
             "table_vertical_lines": self._resolve_toggle(self.table_vertical_lines),
             "table_font_size": random.randint(*self.table_font_size_range),
             "table_row_spacing": random.randint(*self.table_row_spacing_range),
+            "table_pair_grid": table_pair_grid,
+            "include_table_title": self._resolve_toggle(self.include_table_title),
 
             # Layout
             "start_x": random.randint(*self.start_x_range),

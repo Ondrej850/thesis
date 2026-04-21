@@ -405,6 +405,7 @@ class CipherImageGenerator:
     # ------------------------------------------------------------------
 
     TITLE_TEMPLATES = [
+        # Multi-word titles (render as section + elements)
         "Alphabetum Cifratum",
         "Cifra Nova",
         "Clavis Secreta",
@@ -414,9 +415,26 @@ class CipherImageGenerator:
         "Alphabetum Secretum",
         "Cifra Diplomatica",
         "Clavis Alphabetica",
-        "Nomenclator",
         "Cifra Regia",
         "Tabula Secretorum",
+        "Clavis Cifrae",
+        "Liber Cifrarum",
+        "Tabula Nova",
+        "Cifra Universalis",
+        "Clavis Generalis",
+        "Alphabetum Novum",
+        "Liber Clausus",
+        # Single-word titles (render as element only, no section)
+        "Nomenclator",
+        "Cifra",
+        "Clavis",
+        "Alphabetum",
+        "Nomenclatura",
+        "Sigillum",
+        "Tabula",
+        "Secretum",
+        "Vocabularium",
+        "Registrum",
     ]
 
     def render_title(
@@ -433,8 +451,9 @@ class CipherImageGenerator:
     ) -> int:
         """Render a title / header line above the cipher content.
 
-        Each word becomes a separate element annotation; the whole title
-        becomes a section annotation.
+        Each word becomes a separate element annotation.  A section annotation
+        wrapping the whole title is added only when the title contains more than
+        one word — a single-word title is just an element, not a section.
 
         Args:
             title_text: Explicit title string; if None, one is picked at random.
@@ -449,15 +468,16 @@ class CipherImageGenerator:
         base_color = ink_color or (44, 36, 22)
         fs = title_font_size or int(self.font_config.font_size * 1.5)
         text = title_text or random.choice(self.TITLE_TEMPLATES)
+        words = text.split()
 
         renderer = self.cipher_renderer._text_renderer
 
-        # Track section from all element bboxes added during title rendering
+        # Track element bboxes added during title rendering
         elems_before = len(renderer.collected_element_bboxes)
 
         # Render each word as a separate tracked element
         current_x = float(start_x)
-        for word_idx, word in enumerate(text.split()):
+        for word in words:
             end_x, end_y = renderer.render_varied_text(
                 img, word, current_x, start_y,
                 font_path or "", fs, base_color,
@@ -466,8 +486,8 @@ class CipherImageGenerator:
             # Use the actual end_x returned by the renderer (accounts for variations)
             current_x = end_x + fs * 0.4  # inter-word gap
 
-        # Build a section bbox from the newly-added element bboxes
-        if track_annotations:
+        # Build a section bbox only for multi-word titles
+        if track_annotations and len(words) > 1:
             elems_after = len(renderer.collected_element_bboxes)
             new_elems = renderer.collected_element_bboxes[elems_before:elems_after]
             if new_elems:
