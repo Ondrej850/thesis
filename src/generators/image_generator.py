@@ -256,18 +256,18 @@ class CipherImageGenerator:
                     extra = random.uniform(-line_spacing_variation, line_spacing_variation)
                     next_y += extra
 
-                # Update column_max_x by checking the actual bounding box width
+                # Update column_max_x: always advance to at least the column's right boundary
+                # so that the next column never starts on top of this one.
+                # Clipped text may produce fewer than 2 element bboxes, leaving pair_bboxes
+                # stale — so we guard with the column boundary first.
+                column_max_x = max(column_max_x, current_column_x + max_col_width)
                 if track_annotations:
-                    # Access internal state to get last pair bbox
+                    # Refine with the actual rendered extent when a fresh pair bbox exists
                     pair_bboxes = self.cipher_renderer._text_renderer.collected_pair_bboxes
                     if len(pair_bboxes) > 0:
                         last_pair_bbox = pair_bboxes[-1]
                         if last_pair_bbox.is_valid():
                             column_max_x = max(column_max_x, last_pair_bbox.max_x)
-                else:
-                    # Fallback: estimate text width
-                    text_width = len(cipher_text + separator + key_value) * (self.font_config.font_size * 0.6)
-                    column_max_x = max(column_max_x, current_column_x + text_width)
 
                 # Update current Y position
                 current_y = next_y
