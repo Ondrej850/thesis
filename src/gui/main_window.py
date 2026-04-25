@@ -413,6 +413,9 @@ class CipherGeneratorGUI:
         )
         self._cp_title_random_btn.grid(row=12, column=3, sticky=tk.W, padx=4, pady=2)
 
+        # Sync enabled/disabled states on startup
+        self._on_cp_section_title_toggle()
+
     def _on_column_pairs_toggle(self):
         """Enable/disable column-pairs sub-controls based on checkbox."""
         enabled = self.include_column_pairs_var.get()
@@ -626,6 +629,12 @@ class CipherGeneratorGUI:
         self._tc_title_entry.configure(state="normal" if active else "disabled")
         self._tc_title_random_btn.configure(state="normal" if active else "disabled")
 
+    def _on_include_title_toggle(self):
+        """Enable/disable the global title entry based on its checkbox."""
+        active = self.include_title_var.get()
+        self._include_title_entry.configure(state="normal" if active else "disabled")
+        self._include_title_random_btn.configure(state="normal" if active else "disabled")
+
     # ------------------------------------------------------------------
     # Pixel ↔ centimetre helpers  (96 DPI assumed)
     # ------------------------------------------------------------------
@@ -694,12 +703,33 @@ class CipherGeneratorGUI:
         # ── Include title ────────────────────────────────────────────
         self.include_title_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(
-            frame, text="Add title/header above content",
+            frame, text="Add title above content",
             variable=self.include_title_var,
+            command=self._on_include_title_toggle,
         ).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=2)
 
+        self.include_title_text = tk.StringVar(value="")
+        self._include_title_entry = ttk.Entry(frame, textvariable=self.include_title_text, width=22)
+        self._include_title_entry.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        ttk.Label(
+            frame, text="(empty = random)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=5, column=2, sticky=tk.W)
+
+        self._include_title_random_btn = ttk.Button(
+            frame, text="Random",
+            command=lambda: self.include_title_text.set(
+                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+            ),
+            width=8,
+        )
+        self._include_title_random_btn.grid(row=5, column=3, sticky=tk.W, padx=4, pady=2)
+
+        # Sync state on startup
+        self._on_include_title_toggle()
+
         # ── Ink color ─────────────────────────────────────────────────
-        ttk.Label(frame, text="Ink Color:").grid(row=5, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Ink Color:").grid(row=6, column=0, sticky=tk.W, pady=2)
         self.ink_color_var = tk.StringVar(value="dark_brown")
         ink_colors = [
             "dark_brown",      # (44, 36, 22)  – original
@@ -713,12 +743,12 @@ class CipherGeneratorGUI:
             frame, textvariable=self.ink_color_var,
             values=ink_colors, state="readonly", width=25,
         )
-        self._ink_color_combo.grid(row=5, column=1, sticky=(tk.W, tk.E), pady=2)
+        self._ink_color_combo.grid(row=6, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Ink color swatch label (preview)
         self._ink_swatch_label = ttk.Label(frame, text="■ (44, 36, 22)",
                                            font=("TkDefaultFont", 8), foreground="gray")
-        self._ink_swatch_label.grid(row=5, column=2, sticky=tk.W, padx=5)
+        self._ink_swatch_label.grid(row=6, column=2, sticky=tk.W, padx=5)
 
     # ------------------------------------------------------------------
     # Ink colour mapping
@@ -831,6 +861,7 @@ class CipherGeneratorGUI:
         self.table_section_title_text.trace_add('write', self._on_visual_config_change)
         self.cp_section_title_var.trace_add('write', self._on_visual_config_change)
         self.cp_section_title_text.trace_add('write', self._on_visual_config_change)
+        self.include_title_text.trace_add('write', self._on_visual_config_change)
 
         # Table codes: content-changing settings invalidate the code-table cache
         self.table_content_var.trace_add('write', self._on_table_content_change)
@@ -1023,12 +1054,14 @@ class CipherGeneratorGUI:
 
             # ── Title / header (rendered first if enabled) ──────────────
             if include_title:
+                title_text = self.include_title_text.get().strip() or None
                 current_y = generator.render_title(
                     img, start_x, current_y,
                     font_path=selected_font_path,
                     use_variations=use_variations,
                     track_annotations=True,
                     ink_color=ink_color,
+                    title_text=title_text,
                 )
 
             # ── Table codes ─────────────────────────────────────────────
