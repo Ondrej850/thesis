@@ -287,12 +287,14 @@ class VariatedTextRenderer:
                            start_x: float, start_y: float,
                            font_path: str, base_size: int,
                            base_color: Tuple[int, int, int] = (44, 36, 22),
-                           track_annotations: bool = False) -> Tuple[float, float]:
+                           track_annotations: bool = False,
+                           x_limit: Optional[float] = None) -> Tuple[float, float]:
         """
         Render entire text with character variations
 
         Args:
             track_annotations: If True, collect bounding box for this text as an element
+            x_limit: If set, stop rendering characters once x reaches this value
 
         Returns: (end_x, end_y)
         """
@@ -318,6 +320,8 @@ class VariatedTextRenderer:
                         self.start_new_word(base_size, base_color, len(part))
 
                         for char_idx, char in enumerate(part):
+                            if x_limit is not None and x >= x_limit:
+                                break
                             char_x_start = x
 
                             # Get the variations that will be applied to this character
@@ -356,6 +360,8 @@ class VariatedTextRenderer:
                 self.start_new_word(base_size, base_color, len(word))
 
                 for char_idx, char in enumerate(word):
+                    if x_limit is not None and x >= x_limit:
+                        break
                     char_x_start = x
 
                     # Get the variations that will be applied to this character
@@ -388,6 +394,8 @@ class VariatedTextRenderer:
                     )
 
             if word_idx < len(words) - 1:
+                if x_limit is not None and x >= x_limit:
+                    break
                 x += self.get_varied_spacing(base_size * 0.3)
 
         # Store element bbox if tracking
@@ -583,6 +591,9 @@ class CipherEntryRenderer:
         """
         base_color = ink_color if ink_color is not None else (44, 36, 22)
 
+        # Right boundary: never render beyond this x coordinate
+        right_limit = x + max_column_width
+
         # Track which elements belong to this entry
         elements_start_idx = len(self._text_renderer.collected_element_bboxes)
 
@@ -594,20 +605,25 @@ class CipherEntryRenderer:
 
         # Render left part and track its bbox
         end_x, end_y = self._text_renderer.render_varied_text(
-            img, left_text, x, y, font_path, base_size, base_color, track_annotations
+            img, left_text, x, y, font_path, base_size, base_color, track_annotations,
+            x_limit=right_limit
         )
 
         # Render separator (don't track)
         sep_x = end_x + 10
         sep_end_x, _ = self._text_renderer.render_varied_text(
-            img, separator, sep_x, y, font_path, base_size, base_color, False
+            img, separator, sep_x, y, font_path, base_size, base_color, False,
+            x_limit=right_limit
         )
 
         # Render right part and track its bbox AS A SEPARATE ELEMENT
         key_x = sep_end_x + 10
         key_end_x, _ = self._text_renderer.render_varied_text(
-            img, right_text, key_x, y, font_path, base_size, base_color, track_annotations
+            img, right_text, key_x, y, font_path, base_size, base_color, track_annotations,
+            x_limit=right_limit
         )
+        # Clip key_end_x so separators don't extend past the right boundary
+        key_end_x = min(key_end_x, right_limit)
 
         # Create pair bbox from all elements added during this entry
         if track_annotations:
