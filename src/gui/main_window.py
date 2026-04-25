@@ -23,6 +23,7 @@ from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.database.font_manager import FontManager
+from src.gui.dataset_dialog import DatasetDialog
 
 
 class CollapsibleSection(ttk.Frame):
@@ -199,7 +200,6 @@ class CipherGeneratorGUI:
         # Setup sections
         self.setup_paper_config(config_frame)
         self.setup_cipher_config(config_frame)
-        self.setup_font_config(config_frame)
         self.setup_table_codes_config(config_frame)
         self.setup_layout_config(config_frame)
         self.setup_preview(preview_frame)
@@ -242,6 +242,28 @@ class CipherGeneratorGUI:
             ttk.Checkbutton(defects_frame, text=defect.replace('_', ' ').title(),
                            variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=5)
 
+        # Font selection
+        ttk.Label(frame, text="Font:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.font_selection_var = tk.StringVar(value="Random")
+
+        font_choices = ["Random"] + self.font_manager.get_all_font_names()
+        if not self.font_manager.has_fonts():
+            font_choices = ["System Default (No custom fonts found)"]
+
+        font_combo = ttk.Combobox(frame, textvariable=self.font_selection_var,
+                                  values=font_choices, state='readonly', width=25)
+        font_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Variation Level
+        ttk.Label(frame, text="Variation Level of Text:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        self.variation_level_var = tk.StringVar(value="medium")
+        variation_combo = ttk.Combobox(frame, textvariable=self.variation_level_var,
+                                       values=['none', 'low', 'medium', 'high'],
+                                       state='readonly', width=25)
+        variation_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+        ttk.Label(frame, text="(Controls character size, position, rotation)",
+                  font=('TkDefaultFont', 8), foreground='gray').grid(row=4, column=2, sticky=tk.W, padx=5)
+
     def setup_cipher_config(self, parent):
         """Setup column-pairs cipher configuration section."""
         section = CollapsibleSection(parent, "2. Column Pairs")
@@ -271,101 +293,161 @@ class CipherGeneratorGUI:
         self._cp_label_key = ttk.Label(frame, text="Key Type:")
         self._cp_label_key.grid(row=2, column=0, sticky=tk.W, pady=2)
         self.key_type_var = tk.StringVar(value="number")
-        key_types = ['number', 'special_character']
+        key_types = ['number', 'double_char', 'special_character']
         self._cp_key_combo = ttk.Combobox(
             frame, textvariable=self.key_type_var,
             values=key_types, state='readonly', width=25,
         )
         self._cp_key_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
 
+        # Pair format (text first or number first)
+        self._cp_label_pair_fmt = ttk.Label(frame, text="Pair Format:")
+        self._cp_label_pair_fmt.grid(row=3, column=0, sticky=tk.W, pady=2)
+        self.pair_format_var = tk.StringVar(value="text_first")
+        self._cp_pair_fmt_combo = ttk.Combobox(
+            frame, textvariable=self.pair_format_var,
+            values=["text_first", "number_first"],
+            state="readonly", width=25,
+        )
+        self._cp_pair_fmt_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
+        ttk.Label(
+            frame,
+            text="(number_first → '18 — l')",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=3, column=2, sticky=tk.W, padx=5)
+
         # Number of entries
         self._cp_label_entries = ttk.Label(frame, text="Number of Entries:")
-        self._cp_label_entries.grid(row=3, column=0, sticky=tk.W, pady=2)
+        self._cp_label_entries.grid(row=4, column=0, sticky=tk.W, pady=2)
         self.num_entries_var = tk.IntVar(value=30)
         self._cp_entries_spinbox = ttk.Spinbox(
             frame, from_=5, to=100, textvariable=self.num_entries_var, width=10,
         )
-        self._cp_entries_spinbox.grid(row=3, column=1, sticky=tk.W, pady=2)
+        self._cp_entries_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
 
         # Font size (local to column pairs)
         self._cp_label_font_size = ttk.Label(frame, text="Font Size:")
-        self._cp_label_font_size.grid(row=4, column=0, sticky=tk.W, pady=2)
+        self._cp_label_font_size.grid(row=5, column=0, sticky=tk.W, pady=2)
         self.cp_font_size_var = tk.IntVar(value=14)
         self._cp_font_size_spinbox = ttk.Spinbox(
             frame, from_=8, to=36, textvariable=self.cp_font_size_var, width=10,
         )
-        self._cp_font_size_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
+        self._cp_font_size_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
+
+        # Line spacing jitter
+        self._cp_label_jitter = ttk.Label(frame, text="Line Spacing Jitter (px):")
+        self._cp_label_jitter.grid(row=6, column=0, sticky=tk.W, pady=2)
+        self.line_spacing_jitter_var = tk.IntVar(value=0)
+        self._cp_jitter_spinbox = ttk.Spinbox(
+            frame, from_=0, to=20, textvariable=self.line_spacing_jitter_var, width=10,
+        )
+        self._cp_jitter_spinbox.grid(row=6, column=1, sticky=tk.W, pady=2)
+        ttk.Label(
+            frame,
+            text="Random +/- variation per line",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=6, column=2, sticky=tk.W, padx=5)
+
+        # Column separator
+        self._cp_label_col_sep = ttk.Label(frame, text="Column Separator:")
+        self._cp_label_col_sep.grid(row=7, column=0, sticky=tk.W, pady=2)
+        self.col_sep_var = tk.StringVar(value="line")
+        self._cp_col_sep_combo = ttk.Combobox(
+            frame, textvariable=self.col_sep_var,
+            values=['none', 'line', 'double_line'], state='readonly', width=25,
+        )
+        self._cp_col_sep_combo.grid(row=7, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Key separator
+        self._cp_label_key_sep = ttk.Label(frame, text="Key Separator:")
+        self._cp_label_key_sep.grid(row=8, column=0, sticky=tk.W, pady=2)
+        self.key_sep_var = tk.StringVar(value="dashes")
+        self._cp_key_sep_combo = ttk.Combobox(
+            frame, textvariable=self.key_sep_var,
+            values=['dots', 'dashes', 'none'], state='readonly', width=25,
+        )
+        self._cp_key_sep_combo.grid(row=8, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Dash count
+        self._cp_label_dash_count = ttk.Label(frame, text="Dash Count:")
+        self._cp_label_dash_count.grid(row=9, column=0, sticky=tk.W, pady=2)
+        self.dash_count_var = tk.IntVar(value=3)
+        self._cp_dash_count_spinbox = ttk.Spinbox(
+            frame, from_=1, to=10, textvariable=self.dash_count_var, width=10,
+        )
+        self._cp_dash_count_spinbox.grid(row=9, column=1, sticky=tk.W, pady=2)
+
+        # Line spacing
+        self._cp_label_spacing = ttk.Label(frame, text="Line Spacing:")
+        self._cp_label_spacing.grid(row=10, column=0, sticky=tk.W, pady=2)
+        self.spacing_var = tk.IntVar(value=8)
+        self._cp_spacing_spinbox = ttk.Spinbox(
+            frame, from_=5, to=20, textvariable=self.spacing_var, width=10,
+        )
+        self._cp_spacing_spinbox.grid(row=10, column=1, sticky=tk.W, pady=2)
+
+        # Section title
+        self.cp_section_title_var = tk.BooleanVar(value=False)
+        self._cp_title_check = ttk.Checkbutton(
+            frame,
+            text="Add title above column pairs",
+            variable=self.cp_section_title_var,
+            command=self._on_cp_section_title_toggle,
+        )
+        self._cp_title_check.grid(row=11, column=0, columnspan=3, sticky=tk.W, pady=(6, 0))
+
+        self.cp_section_title_text = tk.StringVar(value="")
+        self._cp_title_entry = ttk.Entry(frame, textvariable=self.cp_section_title_text, width=22)
+        self._cp_title_entry.grid(row=12, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        ttk.Label(
+            frame, text="(empty = random)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=12, column=2, sticky=tk.W)
+
+        self._cp_title_random_btn = ttk.Button(
+            frame, text="Random",
+            command=lambda: self.cp_section_title_text.set(
+                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+            ),
+            width=8,
+        )
+        self._cp_title_random_btn.grid(row=12, column=3, sticky=tk.W, padx=4, pady=2)
+
+        # Sync enabled/disabled states on startup
+        self._on_cp_section_title_toggle()
 
     def _on_column_pairs_toggle(self):
         """Enable/disable column-pairs sub-controls based on checkbox."""
-        state = "readonly" if self.include_column_pairs_var.get() else "disabled"
-        spin_state = "normal" if self.include_column_pairs_var.get() else "disabled"
+        enabled = self.include_column_pairs_var.get()
+        state = "readonly" if enabled else "disabled"
+        spin_state = "normal" if enabled else "disabled"
         self._cp_cipher_combo.configure(state=state)
         self._cp_key_combo.configure(state=state)
+        self._cp_pair_fmt_combo.configure(state=state)
         self._cp_entries_spinbox.configure(state=spin_state)
         self._cp_font_size_spinbox.configure(state=spin_state)
+        self._cp_jitter_spinbox.configure(state=spin_state)
+        self._cp_col_sep_combo.configure(state=state)
+        self._cp_key_sep_combo.configure(state=state)
+        self._cp_dash_count_spinbox.configure(state=spin_state)
+        self._cp_spacing_spinbox.configure(state=spin_state)
+        self._cp_title_check.configure(state="normal" if enabled else "disabled")
+        if enabled:
+            self._on_cp_section_title_toggle()
+        else:
+            self._cp_title_entry.configure(state="disabled")
+            self._cp_title_random_btn.configure(state="disabled")
 
-    def setup_font_config(self, parent):
-        """Setup font configuration section"""
-        section = CollapsibleSection(parent, "3. Font Configuration")
-        section.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame = section.content
-
-        # Font selection
-        ttk.Label(frame, text="Font:").grid(row=0, column=0, sticky=tk.W, pady=2)
-        self.font_selection_var = tk.StringVar(value="Random")
-
-        font_choices = ["Random"] + self.font_manager.get_all_font_names()
-        if not self.font_manager.has_fonts():
-            font_choices = ["System Default (No custom fonts found)"]
-
-        font_combo = ttk.Combobox(frame, textvariable=self.font_selection_var,
-                                  values=font_choices, state='readonly', width=25)
-        font_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Variation Level
-        ttk.Label(frame, text="Variation Level:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.variation_level_var = tk.StringVar(value="medium")
-        variation_combo = ttk.Combobox(frame, textvariable=self.variation_level_var,
-                                       values=['none', 'low', 'medium', 'high'],
-                                       state='readonly', width=25)
-        variation_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Add tooltip/help
-        help_label = ttk.Label(frame, text="(Controls character size, position, rotation)",
-                               font=('TkDefaultFont', 8), foreground='gray')
-        help_label.grid(row=1, column=2, sticky=tk.W, padx=5)
-
-        # Column separator
-        ttk.Label(frame, text="Column Separator:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.col_sep_var = tk.StringVar(value="line")
-        col_seps = ['none', 'line', 'double_line']
-        ttk.Combobox(frame, textvariable=self.col_sep_var, values=col_seps,
-                     state='readonly', width=25).grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Key separator
-        ttk.Label(frame, text="Key Separator:").grid(row=3, column=0, sticky=tk.W, pady=2)
-        self.key_sep_var = tk.StringVar(value="dashes")
-        key_seps = ['dots', 'dashes', 'none']
-        ttk.Combobox(frame, textvariable=self.key_sep_var, values=key_seps,
-                     state='readonly', width=25).grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
-
-        # Dash count
-        ttk.Label(frame, text="Dash Count:").grid(row=4, column=0, sticky=tk.W, pady=2)
-        self.dash_count_var = tk.IntVar(value=3)
-        ttk.Spinbox(frame, from_=1, to=10, textvariable=self.dash_count_var,
-                    width=10).grid(row=4, column=1, sticky=tk.W, pady=2)
-
-        # Spacing
-        ttk.Label(frame, text="Line Spacing:").grid(row=5, column=0, sticky=tk.W, pady=2)
-        self.spacing_var = tk.IntVar(value=8)
-        ttk.Spinbox(frame, from_=5, to=20, textvariable=self.spacing_var,
-                    width=10).grid(row=5, column=1, sticky=tk.W, pady=2)
+    def _on_cp_section_title_toggle(self):
+        """Enable/disable the column-pairs title entry based on its checkbox."""
+        active = self.cp_section_title_var.get()
+        self._cp_title_entry.configure(state="normal" if active else "disabled")
+        self._cp_title_random_btn.configure(state="normal" if active else "disabled")
 
     def setup_table_codes_config(self, parent):
-        """Setup table codes configuration section (section 4)."""
-        section = CollapsibleSection(parent, "4. Table Codes")
-        section.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
+        """Setup table codes configuration section (section 3)."""
+        section = CollapsibleSection(parent, "3. Table Codes")
+        section.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
         frame = section.content
 
         # Enable / disable checkbox (off by default — opt-in feature)
@@ -453,6 +535,61 @@ class CipherGeneratorGUI:
         )
         self._tc_font_size_spinbox.grid(row=7, column=1, sticky=tk.W, pady=2)
 
+        # Row spacing (px between rows inside table)
+        self._tc_label_row_spacing = ttk.Label(frame, text="Row Spacing (px):")
+        self._tc_label_row_spacing.grid(row=8, column=0, sticky=tk.W, pady=2)
+        self.table_row_spacing_var = tk.IntVar(value=0)
+        self._tc_row_sp_spinbox = ttk.Spinbox(
+            frame, from_=0, to=20, textvariable=self.table_row_spacing_var, width=10,
+        )
+        self._tc_row_sp_spinbox.grid(row=8, column=1, sticky=tk.W, pady=2)
+        ttk.Label(
+            frame,
+            text="0 = tight grid (like real docs)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=8, column=3, sticky=tk.W, padx=5)
+
+        # 2×2 pair grid layout
+        self.table_pair_grid_var = tk.BooleanVar(value=False)
+        self._tc_pair_grid_check = ttk.Checkbutton(
+            frame,
+            text="2×2 code grid (2 codes per row, uniform codes only)",
+            variable=self.table_pair_grid_var,
+        )
+        self._tc_pair_grid_check.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=2)
+        ttk.Label(
+            frame,
+            text="Requires 'More codes' unchecked",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=9, column=3, sticky=tk.W, padx=5)
+
+        # Section title
+        self.table_section_title_var = tk.BooleanVar(value=False)
+        self._tc_title_check = ttk.Checkbutton(
+            frame,
+            text="Add title above table",
+            variable=self.table_section_title_var,
+            command=self._on_table_section_title_toggle,
+        )
+        self._tc_title_check.grid(row=10, column=0, columnspan=3, sticky=tk.W, pady=(6, 0))
+
+        self.table_section_title_text = tk.StringVar(value="")
+        self._tc_title_entry = ttk.Entry(frame, textvariable=self.table_section_title_text, width=22)
+        self._tc_title_entry.grid(row=11, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        ttk.Label(
+            frame, text="(empty = random)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=11, column=2, sticky=tk.W)
+
+        self._tc_title_random_btn = ttk.Button(
+            frame, text="Random",
+            command=lambda: self.table_section_title_text.set(
+                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+            ),
+            width=8,
+        )
+        self._tc_title_random_btn.grid(row=11, column=3, sticky=tk.W, padx=4, pady=2)
+
         # Sync enabled/disabled states on startup
         self._on_table_codes_toggle()
 
@@ -467,16 +604,36 @@ class CipherGeneratorGUI:
         self._tc_col_spacing_spinbox.configure(state=spin_state)
         self._tc_vlines_check.configure(state="normal" if enabled else "disabled")
         self._tc_font_size_spinbox.configure(state=spin_state)
-        # Also honour the boost-spinbox state within the enabled section
+        self._tc_row_sp_spinbox.configure(state=spin_state)
+        self._tc_title_check.configure(state="normal" if enabled else "disabled")
+        # Also honour the boost-spinbox, pair-grid, and title states within the enabled section
         if enabled:
             self._on_table_boost_toggle()
+            self._on_table_section_title_toggle()
         else:
             self._common_codes_spinbox.configure(state="disabled")
+            self._tc_pair_grid_check.configure(state="disabled")
+            self._tc_title_entry.configure(state="disabled")
+            self._tc_title_random_btn.configure(state="disabled")
 
     def _on_table_boost_toggle(self):
-        """Show or hide the common-codes spinbox depending on the boost checkbox."""
-        state = "normal" if self.table_common_boost_var.get() else "disabled"
-        self._common_codes_spinbox.configure(state=state)
+        """Update common-codes spinbox and pair-grid checkbox based on boost toggle."""
+        boost_on = self.table_common_boost_var.get()
+        self._common_codes_spinbox.configure(state="normal" if boost_on else "disabled")
+        # Pair grid is only available when boost is off (uniform code counts)
+        self._tc_pair_grid_check.configure(state="disabled" if boost_on else "normal")
+
+    def _on_table_section_title_toggle(self):
+        """Enable/disable the table title entry based on its checkbox."""
+        active = self.table_section_title_var.get()
+        self._tc_title_entry.configure(state="normal" if active else "disabled")
+        self._tc_title_random_btn.configure(state="normal" if active else "disabled")
+
+    def _on_include_title_toggle(self):
+        """Enable/disable the global title entry based on its checkbox."""
+        active = self.include_title_var.get()
+        self._include_title_entry.configure(state="normal" if active else "disabled")
+        self._include_title_random_btn.configure(state="normal" if active else "disabled")
 
     # ------------------------------------------------------------------
     # Pixel ↔ centimetre helpers  (96 DPI assumed)
@@ -494,9 +651,9 @@ class CipherGeneratorGUI:
         return int(round(cm * CipherGeneratorGUI.PX_PER_CM))
 
     def setup_layout_config(self, parent):
-        """Setup layout & ink configuration section (section 5)."""
-        section = CollapsibleSection(parent, "5. Layout & Ink")
-        section.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5)
+        """Setup layout & ink configuration section (section 4)."""
+        section = CollapsibleSection(parent, "4. Layout & Ink")
+        section.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5)
         frame = section.content
 
         # ── Start position X ──────────────────────────────────────────
@@ -543,8 +700,36 @@ class CipherGeneratorGUI:
                                                  font=("TkDefaultFont", 8), foreground="gray")
         self._bottom_margin_cm_label.grid(row=3, column=2, sticky=tk.W, padx=5)
 
+        # ── Include title ────────────────────────────────────────────
+        self.include_title_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            frame, text="Add title above content",
+            variable=self.include_title_var,
+            command=self._on_include_title_toggle,
+        ).grid(row=4, column=0, columnspan=3, sticky=tk.W, pady=2)
+
+        self.include_title_text = tk.StringVar(value="")
+        self._include_title_entry = ttk.Entry(frame, textvariable=self.include_title_text, width=22)
+        self._include_title_entry.grid(row=5, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        ttk.Label(
+            frame, text="(empty = random)",
+            font=("TkDefaultFont", 8), foreground="gray",
+        ).grid(row=5, column=2, sticky=tk.W)
+
+        self._include_title_random_btn = ttk.Button(
+            frame, text="Random",
+            command=lambda: self.include_title_text.set(
+                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+            ),
+            width=8,
+        )
+        self._include_title_random_btn.grid(row=5, column=3, sticky=tk.W, padx=4, pady=2)
+
+        # Sync state on startup
+        self._on_include_title_toggle()
+
         # ── Ink color ─────────────────────────────────────────────────
-        ttk.Label(frame, text="Ink Color:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Ink Color:").grid(row=6, column=0, sticky=tk.W, pady=2)
         self.ink_color_var = tk.StringVar(value="dark_brown")
         ink_colors = [
             "dark_brown",      # (44, 36, 22)  – original
@@ -558,12 +743,12 @@ class CipherGeneratorGUI:
             frame, textvariable=self.ink_color_var,
             values=ink_colors, state="readonly", width=25,
         )
-        self._ink_color_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+        self._ink_color_combo.grid(row=6, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Ink color swatch label (preview)
         self._ink_swatch_label = ttk.Label(frame, text="■ (44, 36, 22)",
                                            font=("TkDefaultFont", 8), foreground="gray")
-        self._ink_swatch_label.grid(row=4, column=2, sticky=tk.W, padx=5)
+        self._ink_swatch_label.grid(row=6, column=2, sticky=tk.W, padx=5)
 
     # ------------------------------------------------------------------
     # Ink colour mapping
@@ -637,6 +822,8 @@ class CipherGeneratorGUI:
                   command=self.show_stats, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Fonts",
                   command=self.show_font_stats, width=15).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Generate Dataset",
+                  command=self.open_dataset_dialog, width=18).pack(side=tk.LEFT, padx=5)
 
     def _bind_config_change_listeners(self):
         """Bind change listeners to all config widgets for real-time preview"""
@@ -666,15 +853,26 @@ class CipherGeneratorGUI:
         # Include-section toggles (visual — just re-render, caches are fine)
         self.include_column_pairs_var.trace_add('write', self._on_visual_config_change)
         self.include_table_codes_var.trace_add('write', self._on_visual_config_change)
+        self.pair_format_var.trace_add('write', self._on_visual_config_change)
+        self.line_spacing_jitter_var.trace_add('write', self._on_visual_config_change)
+        self.include_title_var.trace_add('write', self._on_visual_config_change)
+        # Section title toggles and text fields
+        self.table_section_title_var.trace_add('write', self._on_visual_config_change)
+        self.table_section_title_text.trace_add('write', self._on_visual_config_change)
+        self.cp_section_title_var.trace_add('write', self._on_visual_config_change)
+        self.cp_section_title_text.trace_add('write', self._on_visual_config_change)
+        self.include_title_text.trace_add('write', self._on_visual_config_change)
 
         # Table codes: content-changing settings invalidate the code-table cache
         self.table_content_var.trace_add('write', self._on_table_content_change)
         self.table_num_codes_var.trace_add('write', self._on_table_content_change)
         self.table_common_boost_var.trace_add('write', self._on_table_content_change)
         self.table_common_codes_var.trace_add('write', self._on_table_content_change)
-        # Column spacing and vertical lines only affect layout/visuals
+        # Column spacing, vertical lines, row spacing, and pair-grid only affect layout/visuals
         self.table_col_spacing_var.trace_add('write', self._on_visual_config_change)
         self.table_vertical_lines_var.trace_add('write', self._on_visual_config_change)
+        self.table_row_spacing_var.trace_add('write', self._on_visual_config_change)
+        self.table_pair_grid_var.trace_add('write', self._on_visual_config_change)
 
         # Layout & ink listeners (visual only)
         self.start_x_var.trace_add('write', self._on_layout_config_change)
@@ -846,11 +1044,38 @@ class CipherGeneratorGUI:
             bottom_margin = self.bottom_margin_var.get()
             ink_color = self._get_ink_color_rgb()
 
+            # Read additional layout settings
+            line_spacing_jitter = self.line_spacing_jitter_var.get()
+            include_title = self.include_title_var.get()
+            pair_format = self.pair_format_var.get()
+
             # Track current Y so table and pairs stack vertically on same page
             current_y = start_y
 
-            # ── Table codes (rendered first, at top of page) ─────────────
+            # ── Title / header (rendered first if enabled) ──────────────
+            if include_title:
+                title_text = self.include_title_text.get().strip() or None
+                current_y = generator.render_title(
+                    img, start_x, current_y,
+                    font_path=selected_font_path,
+                    use_variations=use_variations,
+                    track_annotations=True,
+                    ink_color=ink_color,
+                    title_text=title_text,
+                )
+
+            # ── Table codes ─────────────────────────────────────────────
             if include_table:
+                if self.table_section_title_var.get():
+                    title_text = self.table_section_title_text.get().strip() or None
+                    current_y = generator.render_title(
+                        img, start_x, current_y,
+                        font_path=selected_font_path,
+                        use_variations=use_variations,
+                        track_annotations=True,
+                        ink_color=ink_color,
+                        title_text=title_text,
+                    )
                 table_config = self._build_table_config()
                 code_table = self._get_or_generate_code_table(table_config)
                 current_y = generator.render_table_codes(
@@ -867,6 +1092,16 @@ class CipherGeneratorGUI:
 
             # ── Column pairs (rendered below table, or from top if no table) ──
             if include_pairs:
+                if self.cp_section_title_var.get():
+                    title_text = self.cp_section_title_text.get().strip() or None
+                    current_y = generator.render_title(
+                        img, start_x, current_y,
+                        font_path=selected_font_path,
+                        use_variations=use_variations,
+                        track_annotations=True,
+                        ink_color=ink_color,
+                        title_text=title_text,
+                    )
                 cipher_entries = self._get_cipher_entries()
                 generator.render_cipher_text(
                     img, cipher_entries, start_x, current_y,
@@ -877,6 +1112,8 @@ class CipherGeneratorGUI:
                     right_margin=right_margin,
                     bottom_margin=bottom_margin,
                     ink_color=ink_color,
+                    pair_format=pair_format,
+                    line_spacing_variation=float(line_spacing_jitter),
                 )
 
             # Mark font as used (for statistics)
@@ -943,10 +1180,18 @@ class CipherGeneratorGUI:
 
                 words = self.db.get_cipher_keys(cipher_type)
                 if words:
-                    for i in range(additional_needed):
-                        word = random.choice(words)
-                        key_num = self._generate_key_number(cipher_type)
-                        entries.append((word, str(key_num)))
+                    if key_type == "double_char":
+                        # Collect already-used keys to avoid duplicates
+                        used_keys = {e[1] for e in entries}
+                        new_keys = self._generate_unique_double_char_keys(additional_needed + len(used_keys))
+                        new_keys = [k for k in new_keys if k not in used_keys][:additional_needed]
+                        for k in new_keys:
+                            entries.append((random.choice(words), k))
+                    else:
+                        for i in range(additional_needed):
+                            word = random.choice(words)
+                            key_val = self._generate_key_value(cipher_type, key_type)
+                            entries.append((word, key_val))
                 else:
                     # Fallback for empty database
                     for i in range(additional_needed):
@@ -963,13 +1208,20 @@ class CipherGeneratorGUI:
         if not words:
             # Generate sample entries if database is empty
             entries = [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
+        elif key_type == "double_char":
+            # Unique two-character keys — generate the full pool upfront
+            unique_keys = self._generate_unique_double_char_keys(num_entries)
+            entries = []
+            for i in range(num_entries):
+                word = random.choice(words)
+                entries.append((word, unique_keys[i]))
         else:
             # Create entries: word + random key number
             entries = []
             for i in range(num_entries):
                 word = random.choice(words)
-                key_num = self._generate_key_number(cipher_type)
-                entries.append((word, str(key_num)))
+                key_val = self._generate_key_value(cipher_type, key_type)
+                entries.append((word, key_val))
 
         # Cache the entries and config state
         self._cached_cipher_entries = entries
@@ -988,6 +1240,8 @@ class CipherGeneratorGUI:
             common_codes=self.table_common_codes_var.get(),
             draw_vertical_lines=self.table_vertical_lines_var.get(),
             column_spacing=self.table_col_spacing_var.get(),
+            row_spacing=self.table_row_spacing_var.get(),
+            use_pair_grid=self.table_pair_grid_var.get() and not self.table_common_boost_var.get(),
         )
 
     def _get_or_generate_code_table(self, table_config: TableCodesConfig) -> dict:
@@ -1022,7 +1276,31 @@ class CipherGeneratorGUI:
         self._cached_code_table_key = cache_key
         return code_table
 
-    def _generate_key_number(self, cipher_type: str) -> int:
+    @staticmethod
+    def _generate_unique_double_char_keys(count: int) -> List[str]:
+        """Generate *count* unique two-character keys (e.g. 'ab', 'kz', '3f').
+
+        Characters are drawn from a-z and 0-9 (36 chars → 1296 possible pairs).
+        Each key is used at most once.
+        """
+        chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+        pool = [a + b for a in chars for b in chars]
+        random.shuffle(pool)
+        return pool[:count]
+
+    def _generate_key_value(self, cipher_type: str, key_type: str) -> str:
+        """Generate a random key value based on cipher type and key type.
+
+        key_type:
+            'number'            – multi-digit number (existing behaviour)
+            'double_char'       – two-character key (unique pool managed by caller)
+            'special_character' – kept for backwards compat (same as number)
+        """
+        # double_char is handled at the batch level (_get_cipher_entries)
+        return str(self._generate_key_number(cipher_type))
+
+    @staticmethod
+    def _generate_key_number(cipher_type: str) -> int:
         """Generate a random key number based on cipher type"""
         if cipher_type == 'substitution':
             return random.randint(100, 250)
@@ -1215,3 +1493,8 @@ Annotations by Category:
                 message += f"  Last used: {last_used}\n\n"
 
         messagebox.showinfo("Font Statistics", message)
+
+    def open_dataset_dialog(self):
+        """Open the batch dataset generation dialog."""
+        paper_types = [pt[1] for pt in self.db.get_paper_types()]
+        DatasetDialog(self.root, self.db, self.font_manager, paper_types)

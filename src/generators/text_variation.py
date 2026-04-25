@@ -40,54 +40,54 @@ class VariatedTextRenderer:
         self.collected_pair_bboxes = []     # Character pairs
         self.collected_section_bboxes = []  # Text sections
 
-        # Much lower probability - only 1-2 letters per word
+        # Per-character variation probability
         self.char_variation_probability = {
-            "low": 0.12,     # ~1 letter per 8-letter word
-            "medium": 0.18,  # ~1-2 letters per 7-letter word
-            "high": 0.22,    # ~1-2 letters per 7-letter word
-        }.get(variation_level, 0.18)
+            "low": 0.20,     # ~1-2 letters per 7-letter word
+            "medium": 0.35,  # ~2-3 letters per 7-letter word
+            "high": 0.50,    # ~3-4 letters per 7-letter word
+        }.get(variation_level, 0.35)
 
     def _get_variation_settings(self, level: str) -> dict:
         """Get variation parameters based on level"""
         settings = {
             "low": {
-                "size_variation": 0.03,      # ±3% (very subtle)
-                "rotation_max": 0.8,         # ±0.8 degrees
-                "position_x": 0.2,           # ±0.2 pixels
-                "position_y": 0.15,          # ±0.15 pixels
-                "width_scale": 0.003,        # ±0.3%
-                "height_scale": 0.003,       # ±0.3%
-                "spacing_variation": 0.02,   # ±2% spacing (rarely used)
-                "ink_variation": 1,          # ±1 in RGB
-                "word_size_var": 0.02,       # ±2% per word
-                "word_ink_var": 1,           # ±1 RGB per word
-                "word_angle_max": 0.5,       # ±0.5 degrees per word
-            },
-            "medium": {
-                "size_variation": 0.05,      # ±5% (subtle)
+                "size_variation": 0.05,      # ±5%
                 "rotation_max": 1.5,         # ±1.5 degrees
-                "position_x": 0.35,          # ±0.35 pixels
-                "position_y": 0.25,          # ±0.25 pixels
-                "width_scale": 0.008,        # ±0.8%
-                "height_scale": 0.008,       # ±0.8%
-                "spacing_variation": 0.04,   # ±4% spacing (rarely used)
+                "position_x": 0.4,           # ±0.4 pixels
+                "position_y": 0.3,           # ±0.3 pixels
+                "width_scale": 0.005,        # ±0.5%
+                "height_scale": 0.005,       # ±0.5%
+                "spacing_variation": 0.03,   # ±3% spacing
                 "ink_variation": 2,          # ±2 in RGB
                 "word_size_var": 0.03,       # ±3% per word
-                "word_ink_var": 1,           # ±1 RGB per word
-                "word_angle_max": 1.0,       # ±1 degree per word
+                "word_ink_var": 2,           # ±2 RGB per word
+                "word_angle_max": 1.0,       # ±1.0 degrees per word
+            },
+            "medium": {
+                "size_variation": 0.10,      # ±10%
+                "rotation_max": 3.0,         # ±3.0 degrees
+                "position_x": 0.8,           # ±0.8 pixels
+                "position_y": 0.6,           # ±0.6 pixels
+                "width_scale": 0.015,        # ±1.5%
+                "height_scale": 0.015,       # ±1.5%
+                "spacing_variation": 0.06,   # ±6% spacing
+                "ink_variation": 4,          # ±4 in RGB
+                "word_size_var": 0.05,       # ±5% per word
+                "word_ink_var": 3,           # ±3 RGB per word
+                "word_angle_max": 2.0,       # ±2 degrees per word
             },
             "high": {
-                "size_variation": 0.07,      # ±7%
-                "rotation_max": 2.5,         # ±2.5 degrees
-                "position_x": 0.6,           # ±0.6 pixels
-                "position_y": 0.4,           # ±0.4 pixels
-                "width_scale": 0.012,        # ±1.2%
-                "height_scale": 0.012,       # ±1.2%
-                "spacing_variation": 0.06,   # ±6% spacing (rarely used)
-                "ink_variation": 3,          # ±3 in RGB
-                "word_size_var": 0.04,       # ±4% per word
-                "word_ink_var": 2,           # ±2 RGB per word
-                "word_angle_max": 1.5,       # ±1.5 degrees per word
+                "size_variation": 0.15,      # ±15%
+                "rotation_max": 5.0,         # ±5.0 degrees
+                "position_x": 1.5,           # ±1.5 pixels
+                "position_y": 1.0,           # ±1.0 pixels
+                "width_scale": 0.025,        # ±2.5%
+                "height_scale": 0.025,       # ±2.5%
+                "spacing_variation": 0.10,   # ±10% spacing
+                "ink_variation": 6,          # ±6 in RGB
+                "word_size_var": 0.08,       # ±8% per word
+                "word_ink_var": 4,           # ±4 RGB per word
+                "word_angle_max": 3.0,       # ±3.0 degrees per word
             }
         }
         return settings.get(level, settings["medium"])
@@ -470,6 +470,33 @@ class CipherEntryRenderer:
         self._text_renderer = text_renderer
         self._section_start_idx = None
 
+    @staticmethod
+    def _draw_wavy_line(
+        draw: ImageDraw.ImageDraw,
+        x1: int, y1: int, x2: int, y2: int,
+        color, width: int = 1,
+        amplitude: float = 1.0, segment_len: int = 10,
+    ) -> None:
+        """Draw a slightly wavy line simulating a hand-drawn ruler line."""
+        dx = x2 - x1
+        dy = y2 - y1
+        length = (dx * dx + dy * dy) ** 0.5
+        if length < 2:
+            draw.line([(x1, y1), (x2, y2)], fill=color, width=width)
+            return
+        n_seg = max(2, int(length / segment_len))
+        nx, ny = -dy / length, dx / length
+        pts = [(float(x1), float(y1))]
+        for i in range(1, n_seg):
+            t = i / n_seg
+            off = random.uniform(-amplitude, amplitude)
+            pts.append((x1 + dx * t + nx * off, y1 + dy * t + ny * off))
+        pts.append((float(x2), float(y2)))
+        for i in range(len(pts) - 1):
+            p0 = (int(round(pts[i][0])), int(round(pts[i][1])))
+            p1 = (int(round(pts[i + 1][0])), int(round(pts[i + 1][1])))
+            draw.line([p0, p1], fill=color, width=width)
+
     def start_section(self):
         """Mark the start of a new section for annotation tracking"""
         self._section_start_idx = len(self._text_renderer.collected_pair_bboxes)
@@ -543,9 +570,14 @@ class CipherEntryRenderer:
                             paper_width: int = 800,
                             track_annotations: bool = False,
                             max_column_width: int = 300,
-                            ink_color: tuple = None) -> float:
+                            ink_color: tuple = None,
+                            pair_format: str = "text_first") -> float:
         """
         Render a cipher entry (text + separator + key) with variations
+
+        Args:
+            pair_format: "text_first" renders "word — 123",
+                         "number_first" renders "123 — word".
 
         Returns: y position for next line
         """
@@ -554,9 +586,15 @@ class CipherEntryRenderer:
         # Track which elements belong to this entry
         elements_start_idx = len(self._text_renderer.collected_element_bboxes)
 
-        # Render cipher text and track its bbox
+        # Determine rendering order based on pair_format
+        if pair_format == "number_first":
+            left_text, right_text = key_value, cipher_text
+        else:
+            left_text, right_text = cipher_text, key_value
+
+        # Render left part and track its bbox
         end_x, end_y = self._text_renderer.render_varied_text(
-            img, cipher_text, x, y, font_path, base_size, base_color, track_annotations
+            img, left_text, x, y, font_path, base_size, base_color, track_annotations
         )
 
         # Render separator (don't track)
@@ -565,10 +603,10 @@ class CipherEntryRenderer:
             img, separator, sep_x, y, font_path, base_size, base_color, False
         )
 
-        # Render key value and track its bbox AS A SEPARATE ELEMENT
+        # Render right part and track its bbox AS A SEPARATE ELEMENT
         key_x = sep_end_x + 10
         key_end_x, _ = self._text_renderer.render_varied_text(
-            img, key_value, key_x, y, font_path, base_size, base_color, track_annotations  # CHANGED: now tracks!
+            img, right_text, key_x, y, font_path, base_size, base_color, track_annotations
         )
 
         # Create pair bbox from all elements added during this entry
@@ -610,14 +648,20 @@ class CipherEntryRenderer:
             line_width = min(max_column_width, paper_width - x - 50)
 
             if column_separator == 'line':
-                draw.line([(x, separator_y), (x + line_width, separator_y)],
-                          fill=base_color, width=1)
+                self._draw_wavy_line(
+                    draw, int(x), separator_y, int(x + line_width), separator_y,
+                    color=base_color,
+                )
             elif column_separator == 'double_line':
-                draw.line([(x, separator_y), (x + line_width, separator_y)],
-                          fill=base_color, width=1)
+                self._draw_wavy_line(
+                    draw, int(x), separator_y, int(x + line_width), separator_y,
+                    color=base_color,
+                )
                 spacing = max(2, int(base_size * 0.15))  # Space between lines scales with font
-                draw.line([(x, separator_y + spacing), (x + line_width, separator_y + spacing)],
-                          fill=base_color, width=1)
+                self._draw_wavy_line(
+                    draw, int(x), separator_y + spacing, int(x + line_width), separator_y + spacing,
+                    color=base_color,
+                )
 
             # Add extra space after separator (scales with font size)
             next_y += separator_gap * 2

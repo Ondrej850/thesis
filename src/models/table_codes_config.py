@@ -32,6 +32,9 @@ class TableCodesConfig:
     common_codes: int = 5               # Codes for common letters (E,T,A,O,I,N,S,H,R)
     draw_vertical_lines: bool = True    # Draw vertical separator lines between columns
     column_spacing: int = 10            # Extra px added to each column beyond widest text
+    row_spacing: int = 0                # Extra px between rows (0 = tight grid)
+    use_pair_grid: bool = False         # Arrange codes 2-per-row in a 2-column sub-grid
+                                        # Only valid when use_common_boost=False
 
     def get_symbols(self) -> List[str]:
         """Return the ordered list of symbols for the selected content type."""

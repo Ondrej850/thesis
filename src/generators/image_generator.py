@@ -33,17 +33,24 @@ class CipherImageGenerator:
         # Apply aging effects based on aging_level
         aging = self.paper_config.aging_level / 100.0
 
-        # Add yellowing/browning
-        for _ in range(int(500 * aging)):
-            x = random.randint(0, self.paper_config.width)
-            y = random.randint(0, self.paper_config.height)
-            size = random.randint(5, 30)
-            color = random.choice(['#D4C4A8', '#C8B896', '#BCA87A'])
-            alpha = random.randint(10, 50)
+        # Add yellowing/browning — draw all dots onto a single overlay
+        num_dots = int(500 * aging)
+        if num_dots > 0:
             overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
             overlay_draw = ImageDraw.Draw(overlay)
-            overlay_draw.ellipse([x, y, x + size, y + size],
-                                 fill=(*self._hex_to_rgb(color), alpha))
+            aging_colors = [
+                self._hex_to_rgb('#D4C4A8'),
+                self._hex_to_rgb('#C8B896'),
+                self._hex_to_rgb('#BCA87A'),
+            ]
+            for _ in range(num_dots):
+                x = random.randint(0, self.paper_config.width)
+                y = random.randint(0, self.paper_config.height)
+                size = random.randint(5, 30)
+                color = random.choice(aging_colors)
+                alpha = random.randint(10, 50)
+                overlay_draw.ellipse([x, y, x + size, y + size],
+                                     fill=(*color, alpha))
             img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
 
         # Add defects
@@ -160,7 +167,9 @@ class CipherImageGenerator:
                            font_path: Optional[str] = None, use_variations: bool = True,
                            track_annotations: bool = True,
                            right_margin: int = 50, bottom_margin: int = 50,
-                           ink_color: Optional[Tuple[int, int, int]] = None) -> int:
+                           ink_color: Optional[Tuple[int, int, int]] = None,
+                           pair_format: str = "text_first",
+                           line_spacing_variation: float = 0.0) -> int:
         """Render cipher text with keys on image using multi-column layout"""
 
         # Load font path
@@ -239,7 +248,13 @@ class CipherImageGenerator:
                     track_annotations=track_annotations,
                     max_column_width=max_col_width,
                     ink_color=ink_color,
+                    pair_format=pair_format,
                 )
+
+                # Apply per-line spacing variation if configured
+                if line_spacing_variation > 0:
+                    extra = random.uniform(-line_spacing_variation, line_spacing_variation)
+                    next_y += extra
 
                 # Update column_max_x by checking the actual bounding box width
                 if track_annotations:
@@ -384,6 +399,121 @@ class CipherImageGenerator:
         """Reset all annotations (useful when generating multiple batches)"""
         self.coco_manager.reset()
         self.cipher_renderer.reset_annotations()
+
+    # ------------------------------------------------------------------
+    # Title / header rendering
+    # ------------------------------------------------------------------
+
+    TITLE_TEMPLATES = [
+        # Multi-word titles (render as section + elements)
+        "Alphabetum Cifratum",
+        "Cifra Nova",
+        "Clavis Secreta",
+        "Tabula Cifrarum",
+        "Liber Secretus",
+        "Cifra Generalis",
+        "Alphabetum Secretum",
+        "Cifra Diplomatica",
+        "Clavis Alphabetica",
+        "Cifra Regia",
+        "Tabula Secretorum",
+        "Clavis Cifrae",
+        "Liber Cifrarum",
+        "Tabula Nova",
+        "Cifra Universalis",
+        "Clavis Generalis",
+        "Alphabetum Novum",
+        "Liber Clausus",
+        # Single-word titles (render as element only, no section)
+        "Nomenclator",
+        "Cifra",
+        "Clavis",
+        "Alphabetum",
+        "Nomenclatura",
+        "Sigillum",
+        "Tabula",
+        "Secretum",
+        "Vocabularium",
+        "Registrum",
+    ]
+
+    def render_title(
+        self,
+        img: Image.Image,
+        start_x: int,
+        start_y: int,
+        font_path: Optional[str] = None,
+        use_variations: bool = True,
+        track_annotations: bool = True,
+        ink_color: Optional[Tuple[int, int, int]] = None,
+        title_text: Optional[str] = None,
+        title_font_size: Optional[int] = None,
+    ) -> int:
+        """Render a title / header line above the cipher content.
+
+        Each word becomes a separate element annotation.  A section annotation
+        wrapping the whole title is added only when the title contains more than
+        one word — a single-word title is just an element, not a section.
+
+        Args:
+            title_text: Explicit title string; if None, one is picked at random.
+            title_font_size: Font size for the title; defaults to 1.5x base font.
+
+        Returns:
+            Y position below the title (ready for next content).
+        """
+        if font_path is None:
+            font_path = self._get_fallback_font_path()
+
+        base_color = ink_color or (44, 36, 22)
+        fs = title_font_size or int(self.font_config.font_size * 1.5)
+        text = title_text or random.choice(self.TITLE_TEMPLATES)
+        words = text.split()
+
+        renderer = self.cipher_renderer._text_renderer
+
+        # Track element bboxes added during title rendering
+        elems_before = len(renderer.collected_element_bboxes)
+
+        # Render each word as a separate tracked element
+        current_x = float(start_x)
+        for word in words:
+            end_x, end_y = renderer.render_varied_text(
+                img, word, current_x, start_y,
+                font_path or "", fs, base_color,
+                track_annotations=track_annotations,
+            )
+            # Use the actual end_x returned by the renderer (accounts for variations)
+            current_x = end_x + fs * 0.4  # inter-word gap
+
+        # Build a section bbox only for multi-word titles
+        if track_annotations and len(words) > 1:
+            elems_after = len(renderer.collected_element_bboxes)
+            new_elems = renderer.collected_element_bboxes[elems_before:elems_after]
+            if new_elems:
+                from src.models.coco_annotation import BoundingBox
+                section_bbox = BoundingBox()
+                section_bbox.text = f"Title: {text}"
+                for eb in new_elems:
+                    if eb.is_valid():
+                        section_bbox.min_x = min(section_bbox.min_x, eb.min_x)
+                        section_bbox.min_y = min(section_bbox.min_y, eb.min_y)
+                        section_bbox.max_x = max(section_bbox.max_x, eb.max_x)
+                        section_bbox.max_y = max(section_bbox.max_y, eb.max_y)
+                if section_bbox.is_valid():
+                    renderer.collected_section_bboxes.append(section_bbox)
+
+        # Feed annotations to COCO manager
+        if track_annotations and self.current_image_id is not None:
+            annotations = renderer.get_annotations(self.current_image_id)
+            self.coco_manager.add_annotations(self.current_image_id, annotations)
+            # Reset so they aren't double-counted by later render passes
+            renderer.collected_element_bboxes = []
+            renderer.collected_pair_bboxes = []
+            renderer.collected_section_bboxes = []
+
+        next_y = start_y + fs + self.font_config.spacing * 2
+        return int(next_y)
 
     # ------------------------------------------------------------------
     # Table-codes rendering

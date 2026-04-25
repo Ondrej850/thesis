@@ -30,6 +30,7 @@ Path: src/generators/table_codes_generator.py
 
 from __future__ import annotations
 
+import math
 import os
 import random
 import sys
@@ -150,11 +151,16 @@ class TableCodesGenerator:
         max_y = paper_height - bottom_margin
         current_y = y
 
+        line_h = self._get_line_height(font)
+
         for chunk in row_chunks:
+
             max_codes = max((len(code_table[s]) for s in chunk), default=0)
-            row_h = self.font_size + self.spacing
+            row_h = line_h + self.config.row_spacing
+            # In pair-grid mode codes are 2 per visual row, so half as many rows
+            visual_code_rows = math.ceil(max_codes / 2) if self.config.use_pair_grid else max_codes
             # Estimate block height: header row + sep line + code rows + sep line
-            block_h = row_h + 4 + max_codes * row_h + 4
+            block_h = row_h + (2 + self.config.row_spacing) + visual_code_rows * row_h + (1 + self.config.row_spacing)
 
             if current_y + block_h > max_y:
                 # Would overflow — stop here, don't render partial blocks
@@ -165,9 +171,10 @@ class TableCodesGenerator:
                 break
 
             current_y = self._render_row_block(
-                img, chunk, code_table, x, current_y, col_w, font_path, font, track_annotations
+                img, chunk, code_table, x, current_y, col_w, font_path, font,
+                track_annotations,
             )
-            current_y += self.spacing * 3  # Extra gap between row blocks
+            current_y += self.config.row_spacing
 
         return current_y
 
@@ -184,6 +191,14 @@ class TableCodesGenerator:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _get_line_height(self, font: ImageFont.FreeTypeFont) -> int:
+        """Return the actual line height from font metrics, not the nominal font_size."""
+        try:
+            ascent, descent = font.getmetrics()
+            return ascent + descent
+        except Exception:
+            return self.font_size
 
     def _load_font(self, font_path: Optional[str], size: int) -> ImageFont.FreeTypeFont:
         """Load a font with graceful fallback."""
@@ -211,6 +226,48 @@ class TableCodesGenerator:
         bb = draw.textbbox((0, 0), text, font=font)
         return bb[2] - bb[0], bb[3] - bb[1]
 
+    def _draw_wavy_line(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x1: int, y1: int, x2: int, y2: int,
+        color: Tuple[int, int, int],
+        width: int = 1,
+        amplitude: float = 1.2,
+        segment_len: int = 8,
+    ) -> None:
+        """Draw a slightly wavy line between two points.
+
+        The line is broken into short segments; each interior control point
+        is offset by a small random amount perpendicular to the line direction.
+        This simulates hand-drawn ruler lines on historical documents.
+        """
+        import math
+        dx = x2 - x1
+        dy = y2 - y1
+        length = math.hypot(dx, dy)
+        if length < 2:
+            draw.line([(x1, y1), (x2, y2)], fill=color, width=width)
+            return
+
+        n_segments = max(2, int(length / segment_len))
+        # Unit normal perpendicular to line direction
+        nx = -dy / length
+        ny = dx / length
+
+        points: List[Tuple[float, float]] = [(float(x1), float(y1))]
+        for i in range(1, n_segments):
+            t = i / n_segments
+            base_x = x1 + dx * t
+            base_y = y1 + dy * t
+            offset = random.uniform(-amplitude, amplitude)
+            points.append((base_x + nx * offset, base_y + ny * offset))
+        points.append((float(x2), float(y2)))
+
+        for i in range(len(points) - 1):
+            p0 = (int(round(points[i][0])), int(round(points[i][1])))
+            p1 = (int(round(points[i + 1][0])), int(round(points[i + 1][1])))
+            draw.line([p0, p1], fill=color, width=width)
+
     def _compute_column_width(
         self,
         draw: ImageDraw.ImageDraw,
@@ -218,15 +275,27 @@ class TableCodesGenerator:
         code_table: Dict[str, List[int]],
         font: ImageFont.FreeTypeFont,
     ) -> int:
-        """Calculate a uniform column width from the widest symbol and code across ALL columns."""
-        max_w = self.font_size  # Minimum
+        """Calculate a uniform column width from the widest symbol and code across ALL columns.
+
+        In pair-grid mode the column must accommodate two code numbers side-by-side,
+        so the width is: max(symbol_width, 2 * max_code_width + inter_code_gap).
+        """
+        max_sym_w = self.font_size  # Minimum
+        max_code_w = self.font_size
         for sym in symbols:
             w, _ = self._measure_text(draw, sym, font)
-            max_w = max(max_w, w)
+            max_sym_w = max(max_sym_w, w)
             for code in code_table[sym]:
                 w, _ = self._measure_text(draw, str(code), font)
-                max_w = max(max_w, w)
-        return max_w + self.config.column_spacing  # text width + user-controlled spacing
+                max_code_w = max(max_code_w, w)
+
+        if self.config.use_pair_grid:
+            inter_gap = max(4, self.font_size // 4)  # Small gap between the two codes
+            min_w = max(max_sym_w, 2 * max_code_w + inter_gap)
+        else:
+            min_w = max(max_sym_w, max_code_w)
+
+        return min_w + self.config.column_spacing  # text width + user-controlled spacing
 
     def _render_row_block(
         self,
@@ -242,15 +311,26 @@ class TableCodesGenerator:
     ) -> int:
         """Render one horizontal block: header row + separator + code rows + closing line.
 
+        Cell (pair) and section bboxes are built from the actual rendered
+        element bboxes, so they are tight to the printed text — matching
+        how column-pair annotations work.
+
         Returns the Y position below this block.
         """
         draw = ImageDraw.Draw(img)
-        row_h = self.font_size + self.spacing
+        row_h = self._get_line_height(font) + self.config.row_spacing
         line_x_end = x + len(symbols) * col_w
+
+        # Per-column list of element-bbox indices so we can build tight
+        # cell bboxes afterwards.  Elements are interleaved (all headers
+        # first, then code rows across columns) so we track by col_idx.
+        col_elem_indices: Dict[int, List[int]] = {i: [] for i in range(len(symbols))}
+        elems = self._text_renderer.collected_element_bboxes
 
         # ── 1. Header row (symbol letters / n-grams / nulls) ────────────
         current_y = y
         for col_idx, sym in enumerate(symbols):
+            before = len(elems)
             col_x = x + col_idx * col_w
             text_w, _ = self._measure_text(draw, sym, font)
             centered_x = col_x + (col_w - text_w) // 2
@@ -259,69 +339,129 @@ class TableCodesGenerator:
                 font_path or "", self.font_size, self.BASE_COLOR,
                 track_annotations=track_annotations,
             )
+            if track_annotations and len(elems) > before:
+                col_elem_indices[col_idx].append(len(elems) - 1)
         current_y += row_h
 
         # ── 2. Separator line below header ──────────────────────────────
-        draw.line([(x, current_y), (line_x_end, current_y)], fill=self.BASE_COLOR, width=1)
-        current_y += 4
+        self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
+        current_y += 2 + self.config.row_spacing
 
         # ── 3. Code rows ─────────────────────────────────────────────────
-        max_codes_in_row = max((len(code_table[sym]) for sym in symbols), default=0)
-        for code_row_idx in range(max_codes_in_row):
-            for col_idx, sym in enumerate(symbols):
-                codes = code_table[sym]
-                if code_row_idx >= len(codes):
-                    continue
-                col_x = x + col_idx * col_w
-                code_str = str(codes[code_row_idx])
-                text_w, _ = self._measure_text(draw, code_str, font)
-                centered_x = col_x + (col_w - text_w) // 2
-                self._text_renderer.render_varied_text(
-                    img, code_str, centered_x, current_y,
-                    font_path or "", self.font_size, self.BASE_COLOR,
-                    track_annotations=track_annotations,
-                )
-            current_y += row_h
+        max_codes_in_block = max((len(code_table[sym]) for sym in symbols), default=0)
+
+        if self.config.use_pair_grid:
+            # Pair-grid mode: two codes side-by-side per visual row.
+            # num_visual_rows = ceil(max_codes / 2)
+
+            inter_gap = max(4, self.font_size // 4)
+            half_w = (col_w - self.config.column_spacing - inter_gap) // 2
+            num_visual_rows = math.ceil(max_codes_in_block / 2)
+            max_codes_in_row = num_visual_rows  # used later for section-bbox label
+
+            for vrow in range(num_visual_rows):
+                for col_idx, sym in enumerate(symbols):
+                    codes = code_table[sym]
+                    col_x = x + col_idx * col_w
+                    # Left sub-cell: codes[2*vrow]
+                    left_idx = 2 * vrow
+                    if left_idx < len(codes):
+                        before = len(elems)
+                        code_str = str(codes[left_idx])
+                        text_w, _ = self._measure_text(draw, code_str, font)
+                        draw_x = col_x + (half_w - text_w) // 2
+                        self._text_renderer.render_varied_text(
+                            img, code_str, draw_x, current_y,
+                            font_path or "", self.font_size, self.BASE_COLOR,
+                            track_annotations=track_annotations,
+                        )
+                        if track_annotations and len(elems) > before:
+                            col_elem_indices[col_idx].append(len(elems) - 1)
+                    # Right sub-cell: codes[2*vrow + 1]
+                    right_idx = 2 * vrow + 1
+                    if right_idx < len(codes):
+                        before = len(elems)
+                        code_str = str(codes[right_idx])
+                        text_w, _ = self._measure_text(draw, code_str, font)
+                        draw_x = col_x + half_w + inter_gap + (half_w - text_w) // 2
+                        self._text_renderer.render_varied_text(
+                            img, code_str, draw_x, current_y,
+                            font_path or "", self.font_size, self.BASE_COLOR,
+                            track_annotations=track_annotations,
+                        )
+                        if track_annotations and len(elems) > before:
+                            col_elem_indices[col_idx].append(len(elems) - 1)
+                current_y += row_h
+        else:
+            # Standard mode: one code per visual row, centred in the column.
+            max_codes_in_row = max_codes_in_block
+            for code_row_idx in range(max_codes_in_block):
+                for col_idx, sym in enumerate(symbols):
+                    codes = code_table[sym]
+                    if code_row_idx >= len(codes):
+                        continue
+                    before = len(elems)
+                    col_x = x + col_idx * col_w
+                    code_str = str(codes[code_row_idx])
+                    text_w, _ = self._measure_text(draw, code_str, font)
+                    centered_x = col_x + (col_w - text_w) // 2
+                    self._text_renderer.render_varied_text(
+                        img, code_str, centered_x, current_y,
+                        font_path or "", self.font_size, self.BASE_COLOR,
+                        track_annotations=track_annotations,
+                    )
+                    if track_annotations and len(elems) > before:
+                        col_elem_indices[col_idx].append(len(elems) - 1)
+                current_y += row_h
 
         # ── 4. Vertical column separator lines ───────────────────────────
         if self.config.draw_vertical_lines:
             block_top = y
-            block_bottom = current_y  # just before the closing separator line
+            block_bottom = current_y
             for col_idx in range(len(symbols) + 1):
                 vx = x + col_idx * col_w
-                draw.line([(vx, block_top), (vx, block_bottom)], fill=self.BASE_COLOR, width=1)
+                self._draw_wavy_line(draw, vx, block_top, vx, block_bottom, self.BASE_COLOR)
 
-        # ── 5. Build geometry-based COCO annotations ─────────────────────
+        # ── 5. Build COCO annotations from actual element bboxes ─────────
         if track_annotations:
+            cells_added = 0
             for col_idx, sym in enumerate(symbols):
-                n_codes = len(code_table[sym])
-                if n_codes == 0:
+                indices = col_elem_indices[col_idx]
+                if not indices:
                     continue
-                col_x = x + col_idx * col_w
-                cell_bottom = y + row_h + 4 + n_codes * row_h
+
                 cell_bbox = BoundingBox()
                 cell_bbox.text = f"{sym}:{','.join(str(c) for c in code_table[sym])}"
-                cell_bbox.min_x = float(col_x)
-                cell_bbox.min_y = float(y)
-                cell_bbox.max_x = float(col_x + col_w)
-                cell_bbox.max_y = float(cell_bottom)
+                for idx in indices:
+                    eb = elems[idx]
+                    if eb.is_valid():
+                        cell_bbox.min_x = min(cell_bbox.min_x, eb.min_x)
+                        cell_bbox.min_y = min(cell_bbox.min_y, eb.min_y)
+                        cell_bbox.max_x = max(cell_bbox.max_x, eb.max_x)
+                        cell_bbox.max_y = max(cell_bbox.max_y, eb.max_y)
                 if cell_bbox.is_valid():
                     self._text_renderer.collected_pair_bboxes.append(cell_bbox)
+                    cells_added += 1
 
-            block_bbox = BoundingBox()
-            block_bbox.text = (
-                f"RowBlock({''.join(symbols)}) "
-                f"{len(symbols)} symbols × up to {max_codes_in_row} codes"
-            )
-            block_bbox.min_x = float(x)
-            block_bbox.min_y = float(y)
-            block_bbox.max_x = float(line_x_end)
-            block_bbox.max_y = float(current_y)
-            if block_bbox.is_valid():
-                self._text_renderer.collected_section_bboxes.append(block_bbox)
+            # Section bbox: union of all cell bboxes we just added
+            if cells_added > 0:
+                recent_cells = self._text_renderer.collected_pair_bboxes[-cells_added:]
+                block_bbox = BoundingBox()
+                block_bbox.text = (
+                    f"RowBlock({''.join(symbols)}) "
+                    f"{len(symbols)} symbols × up to {max_codes_in_row} codes"
+                )
+                for cell in recent_cells:
+                    if cell.is_valid():
+                        block_bbox.min_x = min(block_bbox.min_x, cell.min_x)
+                        block_bbox.min_y = min(block_bbox.min_y, cell.min_y)
+                        block_bbox.max_x = max(block_bbox.max_x, cell.max_x)
+                        block_bbox.max_y = max(block_bbox.max_y, cell.max_y)
+                if block_bbox.is_valid():
+                    self._text_renderer.collected_section_bboxes.append(block_bbox)
 
-        # ── 5. Closing separator line ────────────────────────────────────
-        draw.line([(x, current_y), (line_x_end, current_y)], fill=self.BASE_COLOR, width=1)
-        current_y += 2
+        # ── 6. Closing separator line ────────────────────────────────────
+        self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
+        current_y += 1 + self.config.row_spacing
 
         return current_y
