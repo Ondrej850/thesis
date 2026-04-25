@@ -644,8 +644,8 @@ class CipherEntryRenderer:
             # Position separator halfway between this line and next line
             separator_gap = base_size * 0.3  # 30% of font size
             separator_y = int(next_y + separator_gap)
-            # Use max_column_width to limit separator to current column
-            line_width = min(max_column_width, paper_width - x - 50)
+            # Span exactly the rendered pair — from left edge to rightmost rendered pixel
+            line_width = int(key_end_x) - int(x)
 
             if column_separator == 'line':
                 self._draw_wavy_line(

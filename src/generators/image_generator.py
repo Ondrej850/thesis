@@ -328,13 +328,14 @@ class CipherImageGenerator:
             draw.text((separator_x, y_offset), separator, fill='#2C2416', font=font)
 
             key_x = separator_x + 50
+            key_bbox = draw.textbbox((key_x, y_offset), key_value, font=font)
             draw.text((key_x, y_offset), key_value, fill='#2C2416', font=font)
 
             y_offset += line_height
 
             if self.font_config.column_separator != 'none':
-                self._draw_column_separator(draw, start_x, y_offset,
-                                            self.paper_config.width - start_x - 50)
+                line_width = key_bbox[2] - start_x
+                self._draw_column_separator(draw, start_x, y_offset, line_width)
                 y_offset += 5
 
         return y_offset

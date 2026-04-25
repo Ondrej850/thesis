@@ -1,3 +1,4 @@
+
 """
 Dataset generation dialog.
 Lets the user configure randomisation ranges and generates a batch of images.
@@ -9,7 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 
-from src.models.dataset_config import DatasetConfig
+from src.models.dataset_config import DatasetConfig, TableRangeConfig
 from src.generators.dataset_generator import DatasetGenerator
 from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
@@ -17,12 +18,12 @@ from src.database.font_manager import FontManager
 
 # Reusable constants
 ALL_DEFECTS = ["wrinkled_edges", "burns", "stains", "holes", "tears", "yellowing"]
-ALL_CIPHER_TYPES = ["substitution", "bigram", "trigram", "dictionary", "nulls"]
+ALL_CIPHER_TYPES = ["alphabet", "substitution", "bigram", "trigram", "dictionary", "nulls"]
 ALL_KEY_TYPES = ["number", "double_char", "special_character"]
 ALL_VARIATION_LEVELS = ["none", "low", "medium", "high"]
 ALL_COL_SEPARATORS = ["none", "line", "double_line"]
 ALL_KEY_SEPARATORS = ["dots", "dashes", "none"]
-ALL_TABLE_CONTENT = ["alphabet", "ngrams", "nulls"]
+ALL_TABLE_CONTENT = ["alphabet", "bigrams", "trigrams", "words", "nulls"]
 ALL_PAIR_FORMATS = ["text_first", "number_first"]
 ALL_INK_COLORS = ["dark_brown", "black", "faded_brown", "iron_gall", "sepia", "charcoal"]
 TOGGLE_OPTIONS = ["always", "never", "random"]
@@ -167,6 +168,14 @@ class DatasetDialog(tk.Toplevel):
             row=row, column=1, sticky=tk.W, pady=2)
         row += 1
 
+        self.ignore_empty_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            self._inner,
+            text="Ignore empty papers (re-generate if nothing renders on a page)",
+            variable=self.ignore_empty_var,
+        ).grid(row=row, column=0, columnspan=4, sticky=tk.W, padx=(20, 5), pady=2)
+        row += 1
+
         ttk.Label(self._inner, text="Output Directory:").grid(row=row, column=0, sticky=tk.W, padx=(20, 5), pady=2)
         self.output_dir_var = tk.StringVar(value="")
         dir_frame = ttk.Frame(self._inner)
@@ -205,7 +214,7 @@ class DatasetDialog(tk.Toplevel):
                                                          defaults=["text_first", "number_first"])
         self._entries_lo, self._entries_hi, row = self._add_range(row, "Num Entries:", 5, 100, 10, 50)
         self._cp_fs_lo, self._cp_fs_hi, row = self._add_range(row, "Font Size:", 8, 36, 10, 20)
-        self._col_sep_vars, row = self._add_checkboxes(row, "Column Separators:", ALL_COL_SEPARATORS,
+        self._col_sep_vars, row = self._add_checkboxes(row, "Row Separators:", ALL_COL_SEPARATORS,
                                                         defaults=["none", "line"])
         self._key_sep_vars, row = self._add_checkboxes(row, "Key Separators:", ALL_KEY_SEPARATORS,
                                                         defaults=["dots", "dashes"])
@@ -217,22 +226,130 @@ class DatasetDialog(tk.Toplevel):
 
     def _section_table_codes(self, row: int) -> int:
         row = self._add_section_label(row, "Table Codes")
-        self._tc_toggle, row = self._add_toggle(row, "Include:", "random")
-        self._tc_content_vars, row = self._add_checkboxes(row, "Content Types:", ALL_TABLE_CONTENT,
-                                                           defaults=["alphabet"])
-        self._tc_codes_lo, self._tc_codes_hi, row = self._add_range(row, "Codes/Symbol:", 1, 10, 1, 5)
-        self._tc_boost_toggle, row = self._add_toggle(row, "Common Boost:", "random")
-        self._tc_ccodes_lo, self._tc_ccodes_hi, row = self._add_range(row, "Common Codes:", 2, 20, 2, 8)
-        self._tc_spacing_lo, self._tc_spacing_hi, row = self._add_range(row, "Col Spacing:", 2, 60, 5, 20)
-        self._tc_vlines_toggle, row = self._add_toggle(row, "Vertical Lines:", "random")
-        self._tc_fs_lo, self._tc_fs_hi, row = self._add_range(row, "Font Size:", 8, 36, 10, 20)
-        self._tc_rsp_lo, self._tc_rsp_hi, row = self._add_range(row, "Row Spacing:", 0, 20, 0, 6)
-        self._tc_pair_grid_toggle, row = self._add_toggle(row, "2×2 Pair Grid:", "never")
-        ttk.Label(self._inner, text="(ignored when Common Boost = always)",
+
+        ttk.Label(self._inner, text="Up to 3 independent table blocks per image. Content types are kept unique.",
                   font=("TkDefaultFont", 8), foreground="gray").grid(
-            row=row - 1, column=2, sticky=tk.W, padx=5)
-        self._tc_title_toggle, row = self._add_toggle(row, "Section Title:", "never")
+            row=row, column=0, columnspan=4, sticky=tk.W, padx=(20, 5), pady=(0, 4))
+        row += 1
+
+        # Container frame for all table config panels
+        self._tc_panels_frame = ttk.Frame(self._inner)
+        self._tc_panels_frame.columnconfigure(0, weight=1)
+        self._tc_panels_frame.grid(row=row, column=0, columnspan=4,
+                                   sticky=(tk.W, tk.E), padx=10)
+        row += 1
+
+        # "Add another table config" button
+        self._tc_add_btn = ttk.Button(self._inner, text="+ Add another table config",
+                                      command=self._add_dataset_table_panel)
+        self._tc_add_btn.grid(row=row, column=0, columnspan=2, sticky=tk.W,
+                              padx=20, pady=(4, 2))
+        row += 1
+
+        self._dataset_table_panels = []
+        self._add_dataset_table_panel()   # create first panel automatically
         return row
+
+    # ------------------------------------------------------------------
+    # Dataset table panel helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _panel_range(parent: ttk.LabelFrame, row: int, label: str,
+                     from_: int, to: int, lo: int, hi: int):
+        """Add a Min/Max spinbox pair inside *parent*. Returns (lo_var, hi_var)."""
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, padx=(5, 5), pady=2)
+        lo_var = tk.IntVar(value=lo)
+        hi_var = tk.IntVar(value=hi)
+        f = ttk.Frame(parent)
+        f.grid(row=row, column=1, sticky=tk.W, pady=2)
+        ttk.Label(f, text="Min:").pack(side=tk.LEFT)
+        ttk.Spinbox(f, from_=from_, to=to, textvariable=lo_var, width=5).pack(side=tk.LEFT, padx=(2, 8))
+        ttk.Label(f, text="Max:").pack(side=tk.LEFT)
+        ttk.Spinbox(f, from_=from_, to=to, textvariable=hi_var, width=5).pack(side=tk.LEFT, padx=2)
+        return lo_var, hi_var
+
+    @staticmethod
+    def _panel_toggle(parent: ttk.LabelFrame, row: int, label: str, default: str = "random"):
+        """Add an always/never/random dropdown inside *parent*. Returns var."""
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky=tk.W, padx=(5, 5), pady=2)
+        var = tk.StringVar(value=default)
+        ttk.Combobox(parent, textvariable=var, values=TOGGLE_OPTIONS,
+                     state="readonly", width=12).grid(row=row, column=1, sticky=tk.W, pady=2)
+        return var
+
+    def _add_dataset_table_panel(self):
+        """Add one table range config panel (max 3)."""
+        if len(self._dataset_table_panels) >= 3:
+            return
+
+        index = len(self._dataset_table_panels)
+        # Default content type: prefer a unique type per panel
+        default_types = ["alphabet", "bigrams", "nulls"]
+        default_content = default_types[index] if index < len(default_types) else "alphabet"
+
+        outer = ttk.LabelFrame(self._tc_panels_frame, text=f"Table {index + 1}", padding="5")
+        outer.columnconfigure(1, weight=1)
+        outer.grid(row=index, column=0, sticky=(tk.W, tk.E), pady=(0, 6))
+
+        r = 0
+
+        # Include toggle
+        include_var = self._panel_toggle(outer, r, "Include:", "always" if index == 0 else "random")
+        r += 1
+
+        # Content types checkboxes
+        ttk.Label(outer, text="Content Types:").grid(row=r, column=0, sticky=tk.NW, padx=(5, 5), pady=2)
+        content_frame = ttk.Frame(outer)
+        content_frame.grid(row=r, column=1, columnspan=3, sticky=tk.W, pady=2)
+        content_vars = {}
+        for i, opt in enumerate(ALL_TABLE_CONTENT):
+            var = tk.BooleanVar(value=(opt == default_content))
+            content_vars[opt] = var
+            ttk.Checkbutton(content_frame, text=opt.title(), variable=var).grid(
+                row=0, column=i, sticky=tk.W, padx=4)
+        r += 1
+
+        codes_lo, codes_hi = self._panel_range(outer, r, "Codes/Symbol:", 1, 10, 1, 5)
+        r += 1
+        boost_var = self._panel_toggle(outer, r, "Common Boost:", "random")
+        r += 1
+        ccodes_lo, ccodes_hi = self._panel_range(outer, r, "Common Codes:", 2, 20, 2, 8)
+        r += 1
+        sp_lo, sp_hi = self._panel_range(outer, r, "Col Spacing:", 2, 60, 5, 20)
+        r += 1
+        vlines_var = self._panel_toggle(outer, r, "Vertical Lines:", "random")
+        r += 1
+        fs_lo, fs_hi = self._panel_range(outer, r, "Font Size:", 8, 36, 10, 20)
+        r += 1
+        rsp_lo, rsp_hi = self._panel_range(outer, r, "Row Spacing:", 0, 20, 0, 6)
+        r += 1
+        pair_grid_var = self._panel_toggle(outer, r, "2×2 Pair Grid:", "never")
+        ttk.Label(outer, text="(ignored when Boost = always)",
+                  font=("TkDefaultFont", 8), foreground="gray").grid(
+            row=r, column=2, sticky=tk.W, padx=5)
+        r += 1
+        draw_sep_var = self._panel_toggle(outer, r, "Draw Sep. Lines:", "always")
+        r += 1
+        title_var = self._panel_toggle(outer, r, "Section Title:", "never")
+
+        self._dataset_table_panels.append({
+            "include": include_var,
+            "content_types": content_vars,
+            "codes_lo": codes_lo, "codes_hi": codes_hi,
+            "common_boost": boost_var,
+            "ccodes_lo": ccodes_lo, "ccodes_hi": ccodes_hi,
+            "sp_lo": sp_lo, "sp_hi": sp_hi,
+            "vertical_lines": vlines_var,
+            "fs_lo": fs_lo, "fs_hi": fs_hi,
+            "rsp_lo": rsp_lo, "rsp_hi": rsp_hi,
+            "pair_grid": pair_grid_var,
+            "draw_header_line": draw_sep_var,
+            "include_title": title_var,
+        })
+
+        if len(self._dataset_table_panels) >= 3:
+            self._tc_add_btn.configure(state="disabled")
 
     def _section_layout(self, row: int) -> int:
         row = self._add_section_label(row, "Layout & Ink")
@@ -260,10 +377,30 @@ class DatasetDialog(tk.Toplevel):
 
     def _build_config(self) -> DatasetConfig:
         """Build a DatasetConfig from the dialog state."""
+        # Build per-table configs from the dynamic panels
+        table_configs = []
+        for p in self._dataset_table_panels:
+            content_types = [k for k, v in p["content_types"].items() if v.get()] or ["alphabet"]
+            table_configs.append(TableRangeConfig(
+                include=p["include"].get(),
+                content_types=content_types,
+                num_codes_range=(p["codes_lo"].get(), p["codes_hi"].get()),
+                common_boost=p["common_boost"].get(),
+                common_codes_range=(p["ccodes_lo"].get(), p["ccodes_hi"].get()),
+                col_spacing_range=(p["sp_lo"].get(), p["sp_hi"].get()),
+                vertical_lines=p["vertical_lines"].get(),
+                font_size_range=(p["fs_lo"].get(), p["fs_hi"].get()),
+                row_spacing_range=(p["rsp_lo"].get(), p["rsp_hi"].get()),
+                pair_grid=p["pair_grid"].get(),
+                draw_header_line=p["draw_header_line"].get(),
+                include_title=p["include_title"].get(),
+            ))
+
         cfg = DatasetConfig(
             num_images=self.num_images_var.get(),
             output_dir=self.output_dir_var.get(),
             annotation_format=self.annotation_fmt_var.get(),
+            ignore_empty_papers=self.ignore_empty_var.get(),
             # Paper
             aging_level_range=(self._aging_lo.get(), self._aging_hi.get()),
             paper_types=self._checked(self._paper_type_vars) or self.paper_types[:1],
@@ -283,18 +420,8 @@ class DatasetDialog(tk.Toplevel):
             key_separators=self._checked(self._key_sep_vars) or ["dashes"],
             dash_count_range=(self._dash_lo.get(), self._dash_hi.get()),
             spacing_range=(self._spacing_lo.get(), self._spacing_hi.get()),
-            # Table codes
-            include_table_codes=self._tc_toggle.get(),
-            table_content_types=self._checked(self._tc_content_vars) or ["alphabet"],
-            table_num_codes_range=(self._tc_codes_lo.get(), self._tc_codes_hi.get()),
-            table_common_boost=self._tc_boost_toggle.get(),
-            table_common_codes_range=(self._tc_ccodes_lo.get(), self._tc_ccodes_hi.get()),
-            table_col_spacing_range=(self._tc_spacing_lo.get(), self._tc_spacing_hi.get()),
-            table_vertical_lines=self._tc_vlines_toggle.get(),
-            table_font_size_range=(self._tc_fs_lo.get(), self._tc_fs_hi.get()),
-            table_row_spacing_range=(self._tc_rsp_lo.get(), self._tc_rsp_hi.get()),
-            table_pair_grid=self._tc_pair_grid_toggle.get(),
-            include_table_title=self._tc_title_toggle.get(),
+            # Multiple table configs
+            table_configs=table_configs,
             # Layout
             start_x_range=(self._sx_lo.get(), self._sx_hi.get()),
             start_y_range=(self._sy_lo.get(), self._sy_hi.get()),

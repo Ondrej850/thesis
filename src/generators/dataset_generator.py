@@ -33,6 +33,7 @@ INK_COLOR_MAP = {
 def _generate_key_number(cipher_type: str) -> int:
     """Generate a random key number matching the main window logic."""
     ranges = {
+        "alphabet":     (1, 99),
         "substitution": (100, 250),
         "bigram":       (70, 99),
         "trigram":       (170, 199),
@@ -88,25 +89,33 @@ class DatasetGenerator:
 
         coco_manager = COCOAnnotationManager()
         t0 = time.monotonic()
+        saved = 0  # number of non-empty images saved so far
 
-        for i in range(self.config.num_images):
+        while saved < self.config.num_images:
             if self._cancelled:
                 break
 
             params = self.config.sample()
-            filename = f"image_{i:04d}.png"
-            self._generate_single(i, params, coco_manager, images_dir)
+
+            # Skip empty papers when the option is enabled.
+            # "Empty" means no table blocks AND no column pairs will render.
+            if self.config.ignore_empty_papers and self._is_empty(params):
+                continue
+
+            filename = f"image_{saved:04d}.png"
+            self._generate_single(saved, params, coco_manager, images_dir)
 
             # Export YOLO per-image immediately so data is saved incrementally
             if yolo_dir is not None:
                 coco_manager.export_yolo(yolo_dir, filename)
 
+            saved += 1
             elapsed = time.monotonic() - t0
-            per_image = elapsed / (i + 1)
-            eta = per_image * (self.config.num_images - (i + 1))
+            per_image = elapsed / saved
+            eta = per_image * (self.config.num_images - saved)
 
             if progress_callback:
-                progress_callback(i + 1, self.config.num_images, elapsed, eta)
+                progress_callback(saved, self.config.num_images, elapsed, eta)
 
         # Export COCO (single JSON for all images)
         if not self._cancelled and fmt in ("coco", "both"):
@@ -176,9 +185,10 @@ class DatasetGenerator:
                 coco_manager.annotation_id_counter += 1
             generator.coco_manager.annotations.clear()
 
-        # Table codes
-        if params["include_table_codes"]:
-            if params.get("include_table_title", False):
+        # Table codes — loop over all table blocks in this image
+        any_table_rendered = False
+        for table_params in params.get("tables", []):
+            if table_params.get("include_title", False):
                 current_y = generator.render_title(
                     img, params["start_x"], current_y,
                     font_path=font_path,
@@ -193,19 +203,27 @@ class DatasetGenerator:
                     coco_manager.annotation_id_counter += 1
                 generator.coco_manager.annotations.clear()
 
+            _ct = table_params["content_type"]
+            _num_sym = table_params.get("num_symbols", 0)
+            _fetched_words = None
+            if _ct == "words" and _num_sym > 0:
+                _fetched_words = self.db.get_table_words(_num_sym)
             table_config = TableCodesConfig(
-                content_type=params["table_content_type"],
-                num_codes=params["table_num_codes"],
-                use_common_boost=params["table_common_boost"],
-                common_codes=params["table_common_codes"],
-                draw_vertical_lines=params["table_vertical_lines"],
-                column_spacing=params["table_col_spacing"],
-                row_spacing=params.get("table_row_spacing", 0),
-                use_pair_grid=params.get("table_pair_grid", False),
+                content_type=_ct,
+                num_symbols=_num_sym,
+                words=_fetched_words,
+                num_codes=table_params["num_codes"],
+                use_common_boost=table_params["common_boost"],
+                common_codes=table_params["common_codes"],
+                draw_vertical_lines=table_params["vertical_lines"],
+                column_spacing=table_params["col_spacing"],
+                row_spacing=table_params.get("row_spacing", 0),
+                use_pair_grid=table_params.get("pair_grid", False),
+                draw_header_line=table_params.get("draw_header_line", True),
             )
             table_gen = TableCodesGenerator(
                 config=table_config,
-                font_size=params["table_font_size"],
+                font_size=table_params["font_size"],
                 spacing=params["spacing"],
                 variation_level=variation_level,
                 ink_color=ink_color,
@@ -221,10 +239,13 @@ class DatasetGenerator:
                 paper_height=paper_config.height,
                 track_annotations=True,
             )
-            # Collect table annotations into the shared manager
             table_anns = table_gen.get_annotations(image_id)
             coco_manager.add_annotations(image_id, table_anns)
-            current_y += params["spacing"] * 4
+            current_y += params["spacing"] * 2
+            any_table_rendered = True
+
+        if any_table_rendered:
+            current_y += params["spacing"] * 2  # extra gap before column pairs
 
         # Column pairs
         if params["include_column_pairs"]:
@@ -275,6 +296,11 @@ class DatasetGenerator:
     # Helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_empty(params: dict) -> bool:
+        """Return True when sampled params would produce a paper with no cipher content."""
+        return not params.get("tables") and not params.get("include_column_pairs", False)
+
     def _resolve_font(self, font_name: str) -> Optional[str]:
         if font_name == "Random":
             return self.font_manager.get_random_font()
@@ -290,6 +316,13 @@ class DatasetGenerator:
         return pool[:count]
 
     def _get_cipher_entries(self, cipher_type: str, key_type: str, num_entries: int):
+        if cipher_type == "alphabet":
+            letters = list('ABCDEFGHIJKLMNOPQRSTUVWXYZ')[:min(num_entries, 26)]
+            if key_type == "double_char":
+                unique_keys = self._generate_unique_double_char_keys(len(letters))
+                return list(zip(letters, unique_keys))
+            return [(l, str(_generate_key_number(cipher_type))) for l in letters]
+
         words = self.db.get_cipher_keys(cipher_type)
         if not words:
             return [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
