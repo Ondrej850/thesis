@@ -193,6 +193,11 @@ class CipherImageGenerator:
 
             separator = self._get_separator()
 
+            # Entry height is constant (same font/spacing for every entry)
+            estimated_entry_height = self.font_config.font_size + self.font_config.spacing
+            if self.font_config.column_separator != 'none':
+                estimated_entry_height += self.font_config.font_size * 0.6
+
             print(f"[DEBUG] render_cipher_text: use_variations={use_variations}, track_annotations={track_annotations}")
             print(f"[DEBUG] Total entries to render: {len(cipher_entries)}")
             print(f"[DEBUG] Multi-column layout: max_height={max_height}, column_spacing={column_spacing}")
@@ -204,21 +209,50 @@ class CipherImageGenerator:
             for idx, (cipher_text, key_value) in enumerate(cipher_entries):
                 print(f"[DEBUG] Rendering entry {idx + 1}: '{cipher_text}' - '{key_value}'")
 
-                # Estimate the height needed for this entry (including separator if present)
-                estimated_entry_height = self.font_config.font_size + self.font_config.spacing
-                if self.font_config.column_separator != 'none':
-                    estimated_entry_height += self.font_config.font_size * 0.6  # Add separator spacing
-
                 # Check if we need to move to next column
                 if current_y + estimated_entry_height > max_height and idx > 0:
-                    # End section for previous column
+                    # End section for the column that just filled up
                     if track_annotations:
                         section_bbox = self.cipher_renderer.end_section(block_id * 100 + column_number)
                         if section_bbox:
                             print(f"[DEBUG] Created section bbox for Column {column_number}: {section_bbox.text}")
 
+                    # Proposed start of next column
+                    next_col_x = column_max_x + column_spacing
+
+                    # Lookahead: find the longest entry that would fill the next column.
+                    # If even the longest entry doesn't fit between next_col_x and the
+                    # right margin, don't start the column.
+                    col_height = max_height - top_margin
+                    entries_per_col = max(1, int(col_height // estimated_entry_height))
+                    next_col_entries = cipher_entries[idx: idx + entries_per_col]
+
+                    # Measure with the actual font so proportional glyph widths are correct.
+                    # Add 20 px for the two 10-px inter-part gaps and a 15 % margin for the
+                    # character-size / position variations applied during rendering.
+                    VARIATION_MARGIN = 1.15
+                    INTER_PART_GAPS = 20
+                    try:
+                        measure_font = ImageFont.truetype(font_path, self.font_config.font_size)
+                        max_entry_width = VARIATION_MARGIN * max(
+                            measure_font.getlength(ct + separator + kv) + INTER_PART_GAPS
+                            for ct, kv in next_col_entries
+                        ) if next_col_entries else 0
+                    except Exception:
+                        char_w = self.font_config.font_size * 0.6
+                        max_entry_width = max(
+                            len(ct + separator + kv) * char_w + INTER_PART_GAPS
+                            for ct, kv in next_col_entries
+                        ) if next_col_entries else 0
+
+                    available_for_next = self.paper_config.width - right_margin - next_col_x
+                    if available_for_next < max_entry_width:
+                        print(f"[WARNING] Not enough space for next column: "
+                              f"longest entry ~{max_entry_width:.0f}px, have {available_for_next:.0f}px. Stopping.")
+                        break
+
                     # Move to next column
-                    current_column_x = column_max_x + column_spacing
+                    current_column_x = next_col_x
                     current_y = top_margin
                     column_number += 1
                     print(f"[DEBUG] Moving to new column {column_number} at x={current_column_x}, resetting y to {top_margin}")
@@ -227,18 +261,15 @@ class CipherImageGenerator:
                     if track_annotations:
                         self.cipher_renderer.start_section()
 
-                    # Stop if there is no horizontal space for another column
-                    if current_column_x + 100 > self.paper_config.width - right_margin:
-                        print(f"[WARNING] No space for column {column_number}, stopping early.")
-                        # End section for this partial column (nothing rendered yet)
-                        if track_annotations:
-                            self.cipher_renderer.end_section(block_id * 100 + column_number)
-                        break
-
-                # Render with variations and annotation tracking
-                # Calculate max column width (leave space for column gap)
+                # Render with variations and annotation tracking.
+                # Allow text to use all space up to the paper's right margin; x_limit inside
+                # render_cipher_entry will clip anything that would spill past it.
                 available_width = self.paper_config.width - current_column_x - right_margin
-                max_col_width = min(300, available_width)  # Max 300px per column or available width
+
+                elements_before = (
+                    len(self.cipher_renderer._text_renderer.collected_element_bboxes)
+                    if track_annotations else 0
+                )
 
                 next_y = self.cipher_renderer.render_cipher_entry(
                     img, cipher_text, key_value, current_column_x, current_y,
@@ -246,7 +277,7 @@ class CipherImageGenerator:
                     column_separator=self.font_config.column_separator,
                     paper_width=self.paper_config.width,
                     track_annotations=track_annotations,
-                    max_column_width=max_col_width,
+                    max_column_width=available_width,
                     ink_color=ink_color,
                     pair_format=pair_format,
                 )
@@ -256,18 +287,23 @@ class CipherImageGenerator:
                     extra = random.uniform(-line_spacing_variation, line_spacing_variation)
                     next_y += extra
 
-                # Update column_max_x by checking the actual bounding box width
+                # Update column_max_x from the element bboxes added by this entry.
+                # Element bboxes are always created for any rendered text (even a single
+                # element), so this works correctly even when the right part is clipped.
                 if track_annotations:
-                    # Access internal state to get last pair bbox
-                    pair_bboxes = self.cipher_renderer._text_renderer.collected_pair_bboxes
-                    if len(pair_bboxes) > 0:
-                        last_pair_bbox = pair_bboxes[-1]
-                        if last_pair_bbox.is_valid():
-                            column_max_x = max(column_max_x, last_pair_bbox.max_x)
+                    element_bboxes = self.cipher_renderer._text_renderer.collected_element_bboxes
+                    new_elements = element_bboxes[elements_before:]
+                    for elem in new_elements:
+                        if elem.is_valid():
+                            column_max_x = max(column_max_x, elem.max_x)
+                    if not new_elements:
+                        # Nothing was tracked; conservatively claim the full available width
+                        column_max_x = max(column_max_x, current_column_x + available_width)
                 else:
-                    # Fallback: estimate text width
+                    # Fallback estimate, capped at the paper edge
                     text_width = len(cipher_text + separator + key_value) * (self.font_config.font_size * 0.6)
-                    column_max_x = max(column_max_x, current_column_x + text_width)
+                    column_max_x = max(column_max_x, min(current_column_x + text_width,
+                                                         self.paper_config.width - right_margin))
 
                 # Update current Y position
                 current_y = next_y
