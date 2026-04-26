@@ -220,22 +220,21 @@ class CipherImageGenerator:
                     # Proposed start of next column
                     next_col_x = column_max_x + column_spacing
 
-                    # Lookahead: estimate average rendered width of the entries that would
-                    # fill the next column.  If the average doesn't fit between next_col_x
-                    # and the right margin, skip this column entirely.
+                    # Lookahead: find the longest entry that would fill the next column.
+                    # If even the longest entry doesn't fit between next_col_x and the
+                    # right margin, don't start the column.
                     col_height = max_height - top_margin
                     entries_per_col = max(1, int(col_height // estimated_entry_height))
                     next_col_entries = cipher_entries[idx: idx + entries_per_col]
                     char_w = self.font_config.font_size * 0.6
-                    avg_entry_width = (
-                        sum(len(ct + separator + kv) * char_w for ct, kv in next_col_entries)
-                        / len(next_col_entries)
+                    max_entry_width = (
+                        max(len(ct + separator + kv) * char_w for ct, kv in next_col_entries)
                     ) if next_col_entries else 0
 
                     available_for_next = self.paper_config.width - right_margin - next_col_x
-                    if available_for_next < avg_entry_width:
+                    if available_for_next < max_entry_width:
                         print(f"[WARNING] Not enough space for next column: "
-                              f"need ~{avg_entry_width:.0f}px, have {available_for_next:.0f}px. Stopping.")
+                              f"longest entry ~{max_entry_width:.0f}px, have {available_for_next:.0f}px. Stopping.")
                         break
 
                     # Move to next column
