@@ -193,6 +193,11 @@ class CipherImageGenerator:
 
             separator = self._get_separator()
 
+            # Entry height is constant (same font/spacing for every entry)
+            estimated_entry_height = self.font_config.font_size + self.font_config.spacing
+            if self.font_config.column_separator != 'none':
+                estimated_entry_height += self.font_config.font_size * 0.6
+
             print(f"[DEBUG] render_cipher_text: use_variations={use_variations}, track_annotations={track_annotations}")
             print(f"[DEBUG] Total entries to render: {len(cipher_entries)}")
             print(f"[DEBUG] Multi-column layout: max_height={max_height}, column_spacing={column_spacing}")
@@ -204,21 +209,37 @@ class CipherImageGenerator:
             for idx, (cipher_text, key_value) in enumerate(cipher_entries):
                 print(f"[DEBUG] Rendering entry {idx + 1}: '{cipher_text}' - '{key_value}'")
 
-                # Estimate the height needed for this entry (including separator if present)
-                estimated_entry_height = self.font_config.font_size + self.font_config.spacing
-                if self.font_config.column_separator != 'none':
-                    estimated_entry_height += self.font_config.font_size * 0.6  # Add separator spacing
-
                 # Check if we need to move to next column
                 if current_y + estimated_entry_height > max_height and idx > 0:
-                    # End section for previous column
+                    # End section for the column that just filled up
                     if track_annotations:
                         section_bbox = self.cipher_renderer.end_section(block_id * 100 + column_number)
                         if section_bbox:
                             print(f"[DEBUG] Created section bbox for Column {column_number}: {section_bbox.text}")
 
+                    # Proposed start of next column
+                    next_col_x = column_max_x + column_spacing
+
+                    # Lookahead: estimate average rendered width of the entries that would
+                    # fill the next column.  If the average doesn't fit between next_col_x
+                    # and the right margin, skip this column entirely.
+                    col_height = max_height - top_margin
+                    entries_per_col = max(1, int(col_height // estimated_entry_height))
+                    next_col_entries = cipher_entries[idx: idx + entries_per_col]
+                    char_w = self.font_config.font_size * 0.6
+                    avg_entry_width = (
+                        sum(len(ct + separator + kv) * char_w for ct, kv in next_col_entries)
+                        / len(next_col_entries)
+                    ) if next_col_entries else 0
+
+                    available_for_next = self.paper_config.width - right_margin - next_col_x
+                    if available_for_next < avg_entry_width:
+                        print(f"[WARNING] Not enough space for next column: "
+                              f"need ~{avg_entry_width:.0f}px, have {available_for_next:.0f}px. Stopping.")
+                        break
+
                     # Move to next column
-                    current_column_x = column_max_x + column_spacing
+                    current_column_x = next_col_x
                     current_y = top_margin
                     column_number += 1
                     print(f"[DEBUG] Moving to new column {column_number} at x={current_column_x}, resetting y to {top_margin}")
@@ -226,16 +247,6 @@ class CipherImageGenerator:
                     # Start tracking new section for this column
                     if track_annotations:
                         self.cipher_renderer.start_section()
-
-                    # Stop if there is no horizontal space for another column.
-                    # Require at least a few characters' worth of width.
-                    min_col_width = self.font_config.font_size * 3
-                    if current_column_x + min_col_width > self.paper_config.width - right_margin:
-                        print(f"[WARNING] No space for column {column_number}, stopping early.")
-                        # End section for this partial column (nothing rendered yet)
-                        if track_annotations:
-                            self.cipher_renderer.end_section(block_id * 100 + column_number)
-                        break
 
                 # Render with variations and annotation tracking.
                 # Allow text to use all space up to the paper's right margin; x_limit inside
