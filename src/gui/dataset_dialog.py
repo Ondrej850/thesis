@@ -466,7 +466,7 @@ class DatasetDialog(tk.Toplevel):
                 self._generator.generate(progress_callback=self._on_progress)
                 self.after(0, lambda: self._on_done(config))
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("Error", str(e), parent=self))
+                self.after(0, lambda err=e: messagebox.showerror("Error", str(err), parent=self))
 
         threading.Thread(target=_run, daemon=True).start()
 
