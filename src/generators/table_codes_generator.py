@@ -156,11 +156,11 @@ class TableCodesGenerator:
         for chunk in row_chunks:
 
             max_codes = max((len(code_table[s]) for s in chunk), default=0)
-            row_h = line_h + self.config.row_spacing
+            row_h = line_h
             # In pair-grid mode codes are 2 per visual row, so half as many rows
             visual_code_rows = math.ceil(max_codes / 2) if self.config.use_pair_grid else max_codes
             # Estimate block height: header row + sep line + code rows + sep line
-            block_h = row_h + (2 + self.config.row_spacing) + visual_code_rows * row_h + (1 + self.config.row_spacing)
+            block_h = row_h + 2 + visual_code_rows * row_h + 1
 
             if current_y + block_h > max_y:
                 # Would overflow — stop here, don't render partial blocks
@@ -318,7 +318,7 @@ class TableCodesGenerator:
         Returns the Y position below this block.
         """
         draw = ImageDraw.Draw(img)
-        row_h = self._get_line_height(font) + self.config.row_spacing
+        row_h = self._get_line_height(font)
         line_x_end = x + len(symbols) * col_w
 
         # Per-column list of element-bbox indices so we can build tight
@@ -344,8 +344,9 @@ class TableCodesGenerator:
         current_y += row_h
 
         # ── 2. Separator line below header ──────────────────────────────
-        self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
-        current_y += 2 + self.config.row_spacing
+        if self.config.draw_header_line:
+            self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
+        current_y += 2
 
         # ── 3. Code rows ─────────────────────────────────────────────────
         max_codes_in_block = max((len(code_table[sym]) for sym in symbols), default=0)
@@ -461,7 +462,8 @@ class TableCodesGenerator:
                     self._text_renderer.collected_section_bboxes.append(block_bbox)
 
         # ── 6. Closing separator line ────────────────────────────────────
-        self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
-        current_y += 1 + self.config.row_spacing
+        if self.config.draw_header_line:
+            self._draw_wavy_line(draw, x, current_y, line_x_end, current_y, self.BASE_COLOR)
+        current_y += 1
 
         return current_y

@@ -69,6 +69,50 @@ class CollapsibleSection(ttk.Frame):
         self.event_generate("<<SectionToggled>>")
 
 
+class _TablePanel:
+    """All state and widget references for one table-codes sub-panel."""
+
+    def __init__(self):
+        # Tk variables
+        self.include_var = tk.BooleanVar(value=True)
+        self.content_var = tk.StringVar(value="alphabet")
+        self.num_codes_var = tk.IntVar(value=3)
+        self.common_boost_var = tk.BooleanVar(value=True)
+        self.common_codes_var = tk.IntVar(value=5)
+        self.col_spacing_var = tk.IntVar(value=10)
+        self.vertical_lines_var = tk.BooleanVar(value=True)
+        self.font_size_var = tk.IntVar(value=14)
+        self.row_spacing_var = tk.IntVar(value=0)
+        self.num_symbols_var = tk.IntVar(value=10)
+        self.pair_grid_var = tk.BooleanVar(value=False)
+        self.draw_header_line_var = tk.BooleanVar(value=True)
+        self.section_title_var = tk.BooleanVar(value=False)
+        self.section_title_text = tk.StringVar(value="")
+
+        # Widget references (set by _build_panel_widgets)
+        self.outer_frame = None
+        self.content_combo = None
+        self.num_symbols_label = None
+        self.num_symbols_spinbox = None
+        self.num_codes_spinbox = None
+        self.boost_check = None
+        self.common_codes_spinbox = None
+        self.col_spacing_spinbox = None
+        self.vlines_check = None
+        self.font_size_spinbox = None
+        self.row_spacing_spinbox = None
+        self.pair_grid_check = None
+        self.draw_header_line_check = None
+        self.title_check = None
+        self.title_entry = None
+        self.title_random_btn = None
+
+        # Per-panel caches
+        self.cached_code_table = None
+        self.cached_code_table_key = None
+        self.cached_words = None  # fetched DB words for 'words' content type
+
+
 class CipherGeneratorGUI:
     """Main GUI application"""
 
@@ -108,12 +152,9 @@ class CipherGeneratorGUI:
         self._cached_paper_type = None
         self._cached_paper_defects = None
 
-        # Cached table codes: the symbol→codes assignment (not the rendered image).
-        # Invalidated only when content-defining settings change (content_type,
-        # num_codes, use_common_boost, common_codes).  Visual settings such as
-        # font_size or symbols_per_row do NOT invalidate this cache.
-        self._cached_code_table = None        # Dict[str, List[int]] or None
-        self._cached_code_table_key = None    # tuple key identifying the content
+        # One _TablePanel per table added in the GUI (up to 3).
+        self._table_panels: list = []
+        self._add_table_btn = None       # populated in setup_table_codes_config
 
         self.setup_gui()
 
@@ -282,7 +323,7 @@ class CipherGeneratorGUI:
         self._cp_label_type = ttk.Label(frame, text="Cipher Type:")
         self._cp_label_type.grid(row=1, column=0, sticky=tk.W, pady=2)
         self.cipher_type_var = tk.StringVar(value="substitution")
-        cipher_types = ['substitution', 'bigram', 'trigram', 'dictionary', 'nulls']
+        cipher_types = ['alphabet', 'substitution', 'bigram', 'trigram', 'dictionary', 'nulls']
         self._cp_cipher_combo = ttk.Combobox(
             frame, textvariable=self.cipher_type_var,
             values=cipher_types, state='readonly', width=25,
@@ -348,8 +389,8 @@ class CipherGeneratorGUI:
             font=("TkDefaultFont", 8), foreground="gray",
         ).grid(row=6, column=2, sticky=tk.W, padx=5)
 
-        # Column separator
-        self._cp_label_col_sep = ttk.Label(frame, text="Column Separator:")
+        # Row separator
+        self._cp_label_col_sep = ttk.Label(frame, text="Row Separator:")
         self._cp_label_col_sep.grid(row=7, column=0, sticky=tk.W, pady=2)
         self.col_sep_var = tk.StringVar(value="line")
         self._cp_col_sep_combo = ttk.Combobox(
@@ -448,186 +489,280 @@ class CipherGeneratorGUI:
         """Setup table codes configuration section (section 3)."""
         section = CollapsibleSection(parent, "3. Table Codes")
         section.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=5)
-        frame = section.content
-
-        # Enable / disable checkbox (off by default — opt-in feature)
-        self.include_table_codes_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(
-            frame, text="Include table codes in document",
-            variable=self.include_table_codes_var,
-            command=self._on_table_codes_toggle,
-        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=2)
+        # Keep a direct reference so _add/_remove_table_panel can place panels here
+        self._tc_section_frame = section.content
+        self._tc_section_frame.columnconfigure(0, weight=1)
 
         ttk.Label(
-            frame,
-            text="Table appears above column pairs when both are enabled.",
+            self._tc_section_frame,
+            text="Tables render above column pairs. Up to 3 tables supported.",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=0, column=3, sticky=tk.W, padx=5)
+        ).grid(row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
 
-        # Table content type
-        self._tc_label_content = ttk.Label(frame, text="Table Content:")
-        self._tc_label_content.grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.table_content_var = tk.StringVar(value="alphabet")
-        self._tc_content_combo = ttk.Combobox(
-            frame, textvariable=self.table_content_var,
-            values=["alphabet", "ngrams", "nulls"],
+        # "Add another table" button — always at row 4 (after up to 3 panels at rows 1-3)
+        self._add_table_btn = ttk.Button(
+            self._tc_section_frame, text="+ Add another table",
+            command=self._add_table_panel,
+        )
+        self._add_table_btn.grid(row=4, column=0, sticky=tk.W, pady=(6, 2))
+
+        # Create the first panel automatically
+        self._add_table_panel()
+
+    # ------------------------------------------------------------------
+    # Multi-table panel management
+    # ------------------------------------------------------------------
+
+    def _add_table_panel(self):
+        """Create and show a new table config panel (max 3)."""
+        if len(self._table_panels) >= 3:
+            return
+
+        panel = _TablePanel()
+        index = len(self._table_panels)
+        self._table_panels.append(panel)
+
+        self._build_panel_widgets(panel, self._tc_section_frame, index)
+        self._bind_panel_listeners(panel)
+
+        if len(self._table_panels) >= 3:
+            self._add_table_btn.configure(state="disabled")
+
+        # Resize scroll region
+        self._tc_section_frame.event_generate("<<SectionToggled>>")
+
+    def _build_panel_widgets(self, panel: _TablePanel, parent: ttk.Frame, index: int):
+        """Build all widgets for one table panel inside *parent*."""
+        outer = ttk.LabelFrame(parent, text=f"Table {index + 1}", padding="5")
+        outer.columnconfigure(1, weight=1)
+        outer.grid(row=index + 1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 6))
+        panel.outer_frame = outer
+
+        # Row 0: Include checkbox for Table 1; Remove button for additional tables
+        if index == 0:
+            ttk.Checkbutton(
+                outer, text="Include in document",
+                variable=panel.include_var,
+                command=lambda p=panel: self._on_panel_include_toggle(p),
+            ).grid(row=0, column=0, columnspan=4, sticky=tk.W, pady=2)
+        else:
+            ttk.Button(
+                outer, text="Remove this table",
+                command=lambda p=panel: self._remove_table_panel(p),
+            ).grid(row=0, column=0, sticky=tk.W, pady=2)
+
+        # Content type
+        ttk.Label(outer, text="Table Content:").grid(row=1, column=0, sticky=tk.W, pady=2)
+        panel.content_combo = ttk.Combobox(
+            outer, textvariable=panel.content_var,
+            values=["alphabet", "bigrams", "trigrams", "words", "nulls"],
             state="readonly", width=25,
         )
-        self._tc_content_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
+        panel.content_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Number of symbols (hidden for alphabet — shown for all other types)
+        panel.num_symbols_label = ttk.Label(outer, text="Number of Symbols:")
+        panel.num_symbols_spinbox = ttk.Spinbox(
+            outer, from_=1, to=50, textvariable=panel.num_symbols_var, width=10,
+        )
+        # Placed at row 2; visibility managed by _update_num_symbols_visibility
 
         # Codes per symbol
-        self._tc_label_codes = ttk.Label(frame, text="Codes per Symbol:")
-        self._tc_label_codes.grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.table_num_codes_var = tk.IntVar(value=3)
-        self._tc_codes_spinbox = ttk.Spinbox(
-            frame, from_=1, to=10, textvariable=self.table_num_codes_var, width=10,
+        ttk.Label(outer, text="Codes per Symbol:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        panel.num_codes_spinbox = ttk.Spinbox(
+            outer, from_=1, to=10, textvariable=panel.num_codes_var, width=10,
         )
-        self._tc_codes_spinbox.grid(row=2, column=1, sticky=tk.W, pady=2)
+        panel.num_codes_spinbox.grid(row=3, column=1, sticky=tk.W, pady=2)
 
         # Common letters boost
-        self.table_common_boost_var = tk.BooleanVar(value=True)
-        self._tc_boost_check = ttk.Checkbutton(
-            frame,
+        panel.boost_check = ttk.Checkbutton(
+            outer,
             text="More codes for common letters (E,T,A,O,I,N,S,H,R)",
-            variable=self.table_common_boost_var,
-            command=self._on_table_boost_toggle,
+            variable=panel.common_boost_var,
+            command=lambda p=panel: self._on_panel_boost_toggle(p),
         )
-        self._tc_boost_check.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=2)
+        panel.boost_check.grid(row=4, column=0, columnspan=4, sticky=tk.W, pady=2)
 
-        # Common letter code count
-        self._tc_label_common = ttk.Label(frame, text="Common Letter Codes:")
-        self._tc_label_common.grid(row=4, column=0, sticky=tk.W, pady=2)
-        self.table_common_codes_var = tk.IntVar(value=5)
-        self._common_codes_spinbox = ttk.Spinbox(
-            frame, from_=2, to=20, textvariable=self.table_common_codes_var, width=10,
+        # Common codes count
+        ttk.Label(outer, text="Common Letter Codes:").grid(row=5, column=0, sticky=tk.W, pady=2)
+        panel.common_codes_spinbox = ttk.Spinbox(
+            outer, from_=2, to=20, textvariable=panel.common_codes_var, width=10,
         )
-        self._common_codes_spinbox.grid(row=4, column=1, sticky=tk.W, pady=2)
+        panel.common_codes_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
 
         # Column spacing
-        self._tc_label_spacing = ttk.Label(frame, text="Column Spacing:")
-        self._tc_label_spacing.grid(row=5, column=0, sticky=tk.W, pady=2)
-        self.table_col_spacing_var = tk.IntVar(value=10)
-        self._tc_col_spacing_spinbox = ttk.Spinbox(
-            frame, from_=2, to=60, textvariable=self.table_col_spacing_var, width=10,
+        ttk.Label(outer, text="Column Spacing:").grid(row=6, column=0, sticky=tk.W, pady=2)
+        panel.col_spacing_spinbox = ttk.Spinbox(
+            outer, from_=2, to=60, textvariable=panel.col_spacing_var, width=10,
         )
-        self._tc_col_spacing_spinbox.grid(row=5, column=1, sticky=tk.W, pady=2)
+        panel.col_spacing_spinbox.grid(row=6, column=1, sticky=tk.W, pady=2)
         ttk.Label(
-            frame,
-            text="px extra per column (lower = tighter)",
+            outer, text="px extra per column",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=5, column=3, sticky=tk.W, padx=5)
+        ).grid(row=6, column=2, sticky=tk.W, padx=5)
 
-        # Vertical column lines
-        self.table_vertical_lines_var = tk.BooleanVar(value=True)
-        self._tc_vlines_check = ttk.Checkbutton(
-            frame,
+        # Vertical lines
+        panel.vlines_check = ttk.Checkbutton(
+            outer,
             text="Draw vertical lines between columns",
-            variable=self.table_vertical_lines_var,
+            variable=panel.vertical_lines_var,
         )
-        self._tc_vlines_check.grid(row=6, column=0, columnspan=3, sticky=tk.W, pady=2)
+        panel.vlines_check.grid(row=7, column=0, columnspan=4, sticky=tk.W, pady=2)
 
-        # Font size (local to table codes)
-        self._tc_label_font_size = ttk.Label(frame, text="Font Size:")
-        self._tc_label_font_size.grid(row=7, column=0, sticky=tk.W, pady=2)
-        self.table_font_size_var = tk.IntVar(value=14)
-        self._tc_font_size_spinbox = ttk.Spinbox(
-            frame, from_=8, to=36, textvariable=self.table_font_size_var, width=10,
+        # Draw separator lines
+        panel.draw_header_line_check = ttk.Checkbutton(
+            outer,
+            text="Draw separator lines (under header / after codes)",
+            variable=panel.draw_header_line_var,
         )
-        self._tc_font_size_spinbox.grid(row=7, column=1, sticky=tk.W, pady=2)
+        panel.draw_header_line_check.grid(row=8, column=0, columnspan=4, sticky=tk.W, pady=2)
 
-        # Row spacing (px between rows inside table)
-        self._tc_label_row_spacing = ttk.Label(frame, text="Row Spacing (px):")
-        self._tc_label_row_spacing.grid(row=8, column=0, sticky=tk.W, pady=2)
-        self.table_row_spacing_var = tk.IntVar(value=0)
-        self._tc_row_sp_spinbox = ttk.Spinbox(
-            frame, from_=0, to=20, textvariable=self.table_row_spacing_var, width=10,
+        # Font size
+        ttk.Label(outer, text="Font Size:").grid(row=9, column=0, sticky=tk.W, pady=2)
+        panel.font_size_spinbox = ttk.Spinbox(
+            outer, from_=8, to=36, textvariable=panel.font_size_var, width=10,
         )
-        self._tc_row_sp_spinbox.grid(row=8, column=1, sticky=tk.W, pady=2)
+        panel.font_size_spinbox.grid(row=9, column=1, sticky=tk.W, pady=2)
+
+        # Gap between row blocks
+        ttk.Label(outer, text="Gap between rows (px):").grid(row=10, column=0, sticky=tk.W, pady=2)
+        panel.row_spacing_spinbox = ttk.Spinbox(
+            outer, from_=0, to=100, textvariable=panel.row_spacing_var, width=10,
+        )
+        panel.row_spacing_spinbox.grid(row=10, column=1, sticky=tk.W, pady=2)
         ttk.Label(
-            frame,
-            text="0 = tight grid (like real docs)",
+            outer, text="gap between table lines",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=8, column=3, sticky=tk.W, padx=5)
+        ).grid(row=10, column=2, sticky=tk.W, padx=5)
 
-        # 2×2 pair grid layout
-        self.table_pair_grid_var = tk.BooleanVar(value=False)
-        self._tc_pair_grid_check = ttk.Checkbutton(
-            frame,
+        # 2×2 pair grid
+        panel.pair_grid_check = ttk.Checkbutton(
+            outer,
             text="2×2 code grid (2 codes per row, uniform codes only)",
-            variable=self.table_pair_grid_var,
+            variable=panel.pair_grid_var,
         )
-        self._tc_pair_grid_check.grid(row=9, column=0, columnspan=3, sticky=tk.W, pady=2)
+        panel.pair_grid_check.grid(row=11, column=0, columnspan=3, sticky=tk.W, pady=2)
         ttk.Label(
-            frame,
-            text="Requires 'More codes' unchecked",
+            outer, text="Requires 'More codes' unchecked",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=9, column=3, sticky=tk.W, padx=5)
+        ).grid(row=11, column=3, sticky=tk.W, padx=5)
 
-        # Section title
-        self.table_section_title_var = tk.BooleanVar(value=False)
-        self._tc_title_check = ttk.Checkbutton(
-            frame,
-            text="Add title above table",
-            variable=self.table_section_title_var,
-            command=self._on_table_section_title_toggle,
+        # Section title checkbox + entry
+        panel.title_check = ttk.Checkbutton(
+            outer,
+            text="Add title above this table",
+            variable=panel.section_title_var,
+            command=lambda p=panel: self._on_panel_title_toggle(p),
         )
-        self._tc_title_check.grid(row=10, column=0, columnspan=3, sticky=tk.W, pady=(6, 0))
+        panel.title_check.grid(row=12, column=0, columnspan=4, sticky=tk.W, pady=(6, 0))
 
-        self.table_section_title_text = tk.StringVar(value="")
-        self._tc_title_entry = ttk.Entry(frame, textvariable=self.table_section_title_text, width=22)
-        self._tc_title_entry.grid(row=11, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        panel.title_entry = ttk.Entry(outer, textvariable=panel.section_title_text, width=22)
+        panel.title_entry.grid(row=13, column=0, columnspan=2, sticky=(tk.W, tk.E),
+                               pady=2, padx=(16, 2))
         ttk.Label(
-            frame, text="(empty = random)",
+            outer, text="(empty = random)",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=11, column=2, sticky=tk.W)
+        ).grid(row=13, column=2, sticky=tk.W)
 
-        self._tc_title_random_btn = ttk.Button(
-            frame, text="Random",
-            command=lambda: self.table_section_title_text.set(
+        panel.title_random_btn = ttk.Button(
+            outer, text="Random",
+            command=lambda p=panel: p.section_title_text.set(
                 random.choice(CipherImageGenerator.TITLE_TEMPLATES)
             ),
             width=8,
         )
-        self._tc_title_random_btn.grid(row=11, column=3, sticky=tk.W, padx=4, pady=2)
+        panel.title_random_btn.grid(row=13, column=3, sticky=tk.W, padx=4, pady=2)
 
-        # Sync enabled/disabled states on startup
-        self._on_table_codes_toggle()
+        # Sync initial widget states
+        self._on_panel_include_toggle(panel)
+        self._update_num_symbols_visibility(panel)
 
-    def _on_table_codes_toggle(self):
-        """Enable/disable table-codes sub-controls based on the Include checkbox."""
-        enabled = self.include_table_codes_var.get()
+    def _bind_panel_listeners(self, panel: _TablePanel):
+        """Bind change-trace listeners for one table panel."""
+        # Content-changing settings — invalidate this panel's code-table cache
+        panel.include_var.trace_add('write', lambda *_: self._on_panel_content_change(panel))
+        panel.content_var.trace_add('write', lambda *_: self._on_panel_content_change(panel))
+        panel.num_codes_var.trace_add('write', lambda *_: self._on_panel_content_change(panel))
+        panel.common_boost_var.trace_add('write', lambda *_: self._on_panel_content_change(panel))
+        panel.common_codes_var.trace_add('write', lambda *_: self._on_panel_content_change(panel))
+        # Visual-only settings — just re-render
+        panel.num_symbols_var.trace_add('write', lambda *_: self._on_panel_content_change(panel))
+        panel.col_spacing_var.trace_add('write', self._on_visual_config_change)
+        panel.vertical_lines_var.trace_add('write', self._on_visual_config_change)
+        panel.row_spacing_var.trace_add('write', self._on_visual_config_change)
+        panel.pair_grid_var.trace_add('write', self._on_visual_config_change)
+        panel.draw_header_line_var.trace_add('write', self._on_visual_config_change)
+        panel.font_size_var.trace_add('write', self._on_visual_config_change)
+        panel.section_title_var.trace_add('write', self._on_visual_config_change)
+        panel.section_title_text.trace_add('write', self._on_visual_config_change)
+
+    def _update_num_symbols_visibility(self, panel: _TablePanel):
+        """Show the 'Number of Symbols' row only for non-alphabet content types."""
+        if panel.content_var.get() == "alphabet":
+            panel.num_symbols_label.grid_forget()
+            panel.num_symbols_spinbox.grid_forget()
+        else:
+            panel.num_symbols_label.grid(row=2, column=0, sticky=tk.W, pady=2)
+            panel.num_symbols_spinbox.grid(row=2, column=1, sticky=tk.W, pady=2)
+
+    def _on_panel_content_change(self, panel: _TablePanel):
+        """Invalidate one panel's code-table cache and schedule re-render."""
+        self._update_num_symbols_visibility(panel)
+        panel.cached_code_table = None
+        panel.cached_code_table_key = None
+        self._schedule_debounced_regenerate()
+
+    def _on_panel_include_toggle(self, panel: _TablePanel):
+        """Enable/disable a panel's sub-controls based on its Include checkbox."""
+        enabled = panel.include_var.get()
         combo_state = "readonly" if enabled else "disabled"
         spin_state = "normal" if enabled else "disabled"
-        self._tc_content_combo.configure(state=combo_state)
-        self._tc_codes_spinbox.configure(state=spin_state)
-        self._tc_boost_check.configure(state="normal" if enabled else "disabled")
-        self._tc_col_spacing_spinbox.configure(state=spin_state)
-        self._tc_vlines_check.configure(state="normal" if enabled else "disabled")
-        self._tc_font_size_spinbox.configure(state=spin_state)
-        self._tc_row_sp_spinbox.configure(state=spin_state)
-        self._tc_title_check.configure(state="normal" if enabled else "disabled")
-        # Also honour the boost-spinbox, pair-grid, and title states within the enabled section
+        panel.content_combo.configure(state=combo_state)
+        panel.num_symbols_spinbox.configure(state=spin_state)
+        panel.num_codes_spinbox.configure(state=spin_state)
+        panel.boost_check.configure(state="normal" if enabled else "disabled")
+        panel.col_spacing_spinbox.configure(state=spin_state)
+        panel.vlines_check.configure(state="normal" if enabled else "disabled")
+        panel.draw_header_line_check.configure(state="normal" if enabled else "disabled")
+        panel.font_size_spinbox.configure(state=spin_state)
+        panel.row_spacing_spinbox.configure(state=spin_state)
+        panel.title_check.configure(state="normal" if enabled else "disabled")
         if enabled:
-            self._on_table_boost_toggle()
-            self._on_table_section_title_toggle()
+            self._on_panel_boost_toggle(panel)
+            self._on_panel_title_toggle(panel)
         else:
-            self._common_codes_spinbox.configure(state="disabled")
-            self._tc_pair_grid_check.configure(state="disabled")
-            self._tc_title_entry.configure(state="disabled")
-            self._tc_title_random_btn.configure(state="disabled")
+            panel.common_codes_spinbox.configure(state="disabled")
+            panel.pair_grid_check.configure(state="disabled")
+            panel.title_entry.configure(state="disabled")
+            panel.title_random_btn.configure(state="disabled")
 
-    def _on_table_boost_toggle(self):
-        """Update common-codes spinbox and pair-grid checkbox based on boost toggle."""
-        boost_on = self.table_common_boost_var.get()
-        self._common_codes_spinbox.configure(state="normal" if boost_on else "disabled")
-        # Pair grid is only available when boost is off (uniform code counts)
-        self._tc_pair_grid_check.configure(state="disabled" if boost_on else "normal")
+    def _on_panel_boost_toggle(self, panel: _TablePanel):
+        """Update common-codes spinbox and pair-grid based on boost toggle."""
+        boost_on = panel.common_boost_var.get()
+        panel.common_codes_spinbox.configure(state="normal" if boost_on else "disabled")
+        panel.pair_grid_check.configure(state="disabled" if boost_on else "normal")
 
-    def _on_table_section_title_toggle(self):
-        """Enable/disable the table title entry based on its checkbox."""
-        active = self.table_section_title_var.get()
-        self._tc_title_entry.configure(state="normal" if active else "disabled")
-        self._tc_title_random_btn.configure(state="normal" if active else "disabled")
+    def _on_panel_title_toggle(self, panel: _TablePanel):
+        """Enable/disable a panel's title entry based on its checkbox."""
+        active = panel.section_title_var.get()
+        panel.title_entry.configure(state="normal" if active else "disabled")
+        panel.title_random_btn.configure(state="normal" if active else "disabled")
+
+    def _remove_table_panel(self, panel: _TablePanel):
+        """Destroy an additional table panel and re-number the remaining ones."""
+        panel.outer_frame.destroy()
+        self._table_panels.remove(panel)
+
+        # Re-position and re-label remaining panels
+        for i, p in enumerate(self._table_panels):
+            p.outer_frame.grid(row=i + 1, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 6))
+            p.outer_frame.configure(text=f"Table {i + 1}")
+
+        # Re-enable the Add button (now below the 3-panel limit)
+        self._add_table_btn.configure(state="normal")
+
+        # Update scroll region
+        self._tc_section_frame.event_generate("<<SectionToggled>>")
 
     def _on_include_title_toggle(self):
         """Enable/disable the global title entry based on its checkbox."""
@@ -845,34 +980,20 @@ class CipherGeneratorGUI:
         self.col_sep_var.trace_add('write', self._on_visual_config_change)
         # Per-section font sizes (visual only)
         self.cp_font_size_var.trace_add('write', self._on_visual_config_change)
-        self.table_font_size_var.trace_add('write', self._on_visual_config_change)
         self.key_sep_var.trace_add('write', self._on_visual_config_change)
         self.dash_count_var.trace_add('write', self._on_visual_config_change)
         self.spacing_var.trace_add('write', self._on_visual_config_change)
 
         # Include-section toggles (visual — just re-render, caches are fine)
         self.include_column_pairs_var.trace_add('write', self._on_visual_config_change)
-        self.include_table_codes_var.trace_add('write', self._on_visual_config_change)
         self.pair_format_var.trace_add('write', self._on_visual_config_change)
         self.line_spacing_jitter_var.trace_add('write', self._on_visual_config_change)
         self.include_title_var.trace_add('write', self._on_visual_config_change)
-        # Section title toggles and text fields
-        self.table_section_title_var.trace_add('write', self._on_visual_config_change)
-        self.table_section_title_text.trace_add('write', self._on_visual_config_change)
+        # Section title toggles and text fields (CP + global)
         self.cp_section_title_var.trace_add('write', self._on_visual_config_change)
         self.cp_section_title_text.trace_add('write', self._on_visual_config_change)
         self.include_title_text.trace_add('write', self._on_visual_config_change)
-
-        # Table codes: content-changing settings invalidate the code-table cache
-        self.table_content_var.trace_add('write', self._on_table_content_change)
-        self.table_num_codes_var.trace_add('write', self._on_table_content_change)
-        self.table_common_boost_var.trace_add('write', self._on_table_content_change)
-        self.table_common_codes_var.trace_add('write', self._on_table_content_change)
-        # Column spacing, vertical lines, row spacing, and pair-grid only affect layout/visuals
-        self.table_col_spacing_var.trace_add('write', self._on_visual_config_change)
-        self.table_vertical_lines_var.trace_add('write', self._on_visual_config_change)
-        self.table_row_spacing_var.trace_add('write', self._on_visual_config_change)
-        self.table_pair_grid_var.trace_add('write', self._on_visual_config_change)
+        # Note: table panel listeners are bound per-panel in _bind_panel_listeners()
 
         # Layout & ink listeners (visual only)
         self.start_x_var.trace_add('write', self._on_layout_config_change)
@@ -907,16 +1028,6 @@ class CipherGeneratorGUI:
     def _invalidate_paper_cache(self):
         """Invalidate the cached paper image"""
         self._cached_paper_image = None
-
-    def _on_table_content_change(self, *args):
-        """Called when table content settings change — invalidates code-table cache."""
-        self._invalidate_code_table_cache()
-        self._schedule_debounced_regenerate()
-
-    def _invalidate_code_table_cache(self):
-        """Clear the cached symbol→codes assignment."""
-        self._cached_code_table = None
-        self._cached_code_table_key = None
 
     def _schedule_debounced_regenerate(self):
         """Schedule a debounced regeneration (only if user has generated at least once)"""
@@ -959,7 +1070,10 @@ class CipherGeneratorGUI:
             # Invalidate all caches to get completely fresh document
             self._invalidate_cipher_cache()
             self._invalidate_paper_cache()
-            self._invalidate_code_table_cache()
+            for _p in self._table_panels:
+                _p.cached_code_table = None
+                _p.cached_code_table_key = None
+                _p.cached_words = None
             self._do_generate(show_message=True)
             # Enable auto-regeneration on future config changes
             self._preview_generated_once = True
@@ -1034,7 +1148,6 @@ class CipherGeneratorGUI:
                 self._cached_paper_type = current_paper_type
                 self._cached_paper_defects = current_defects
 
-            include_table = self.include_table_codes_var.get()
             include_pairs = self.include_column_pairs_var.get()
 
             # Read layout settings
@@ -1049,7 +1162,7 @@ class CipherGeneratorGUI:
             include_title = self.include_title_var.get()
             pair_format = self.pair_format_var.get()
 
-            # Track current Y so table and pairs stack vertically on same page
+            # Track current Y so sections stack vertically on same page
             current_y = start_y
 
             # ── Title / header (rendered first if enabled) ──────────────
@@ -1064,31 +1177,37 @@ class CipherGeneratorGUI:
                     title_text=title_text,
                 )
 
-            # ── Table codes ─────────────────────────────────────────────
-            if include_table:
-                if self.table_section_title_var.get():
-                    title_text = self.table_section_title_text.get().strip() or None
+            # ── Table codes (one panel per enabled table) ────────────────
+            any_table_rendered = False
+            for panel in self._table_panels:
+                if not panel.include_var.get():
+                    continue
+                if panel.section_title_var.get():
+                    t_text = panel.section_title_text.get().strip() or None
                     current_y = generator.render_title(
                         img, start_x, current_y,
                         font_path=selected_font_path,
                         use_variations=use_variations,
                         track_annotations=True,
                         ink_color=ink_color,
-                        title_text=title_text,
+                        title_text=t_text,
                     )
-                table_config = self._build_table_config()
-                code_table = self._get_or_generate_code_table(table_config)
+                table_config = self._build_table_config_from_panel(panel)
+                code_table = self._get_or_generate_code_table_for_panel(panel, table_config)
                 current_y = generator.render_table_codes(
                     img, table_config, start_x, current_y,
                     font_path=selected_font_path,
                     use_variations=use_variations,
                     track_annotations=True,
                     code_table=code_table,
-                    font_size=self.table_font_size_var.get(),
+                    font_size=panel.font_size_var.get(),
                     ink_color=ink_color,
                 )
-                # Add a gap between table and column pairs
-                current_y += self.spacing_var.get() * 4
+                current_y += self.spacing_var.get() * 2
+                any_table_rendered = True
+
+            if any_table_rendered:
+                current_y += self.spacing_var.get() * 2  # extra gap before column pairs
 
             # ── Column pairs (rendered below table, or from top if no table) ──
             if include_pairs:
@@ -1132,8 +1251,11 @@ class CipherGeneratorGUI:
                 variation_info = f" with {variation_level} variations" if use_variations else ""
                 font_info = f" using {font_selection}" if selected_font_path else ""
                 parts = []
-                if include_table:
+                active_tables = sum(1 for p in self._table_panels if p.include_var.get())
+                if active_tables == 1:
                     parts.append("table codes")
+                elif active_tables > 1:
+                    parts.append(f"table codes ×{active_tables}")
                 if include_pairs:
                     parts.append("column pairs")
                 layout_info = " [" + " + ".join(parts) + "]" if parts else " [nothing selected]"
@@ -1176,26 +1298,38 @@ class CipherGeneratorGUI:
             else:
                 # Need more entries - keep existing and generate additional ones
                 entries = list(self._cached_cipher_entries)  # Copy existing
-                additional_needed = num_entries - cached_count
 
-                words = self.db.get_cipher_keys(cipher_type)
-                if words:
+                if cipher_type == "alphabet":
+                    # Only add letters not yet used; never exceed 26
+                    used_letters = {e[0] for e in entries}
+                    remaining = [l for l in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' if l not in used_letters]
+                    to_add = remaining[:min(num_entries - cached_count, len(remaining))]
                     if key_type == "double_char":
-                        # Collect already-used keys to avoid duplicates
                         used_keys = {e[1] for e in entries}
-                        new_keys = self._generate_unique_double_char_keys(additional_needed + len(used_keys))
-                        new_keys = [k for k in new_keys if k not in used_keys][:additional_needed]
-                        for k in new_keys:
-                            entries.append((random.choice(words), k))
+                        new_keys = self._generate_unique_double_char_keys(len(to_add) + len(used_keys))
+                        new_keys = [k for k in new_keys if k not in used_keys][:len(to_add)]
+                        entries.extend(zip(to_add, new_keys))
+                    else:
+                        for letter in to_add:
+                            entries.append((letter, self._generate_key_value(cipher_type, key_type)))
+                else:
+                    additional_needed = num_entries - cached_count
+                    words = self.db.get_cipher_keys(cipher_type)
+                    if words:
+                        if key_type == "double_char":
+                            used_keys = {e[1] for e in entries}
+                            new_keys = self._generate_unique_double_char_keys(additional_needed + len(used_keys))
+                            new_keys = [k for k in new_keys if k not in used_keys][:additional_needed]
+                            for k in new_keys:
+                                entries.append((random.choice(words), k))
+                        else:
+                            for i in range(additional_needed):
+                                word = random.choice(words)
+                                key_val = self._generate_key_value(cipher_type, key_type)
+                                entries.append((word, key_val))
                     else:
                         for i in range(additional_needed):
-                            word = random.choice(words)
-                            key_val = self._generate_key_value(cipher_type, key_type)
-                            entries.append((word, key_val))
-                else:
-                    # Fallback for empty database
-                    for i in range(additional_needed):
-                        entries.append((f"Sample{cached_count + i}", str(100 + cached_count + i)))
+                            entries.append((f"Sample{cached_count + i}", str(100 + cached_count + i)))
 
                 # Update cache with extended entries
                 self._cached_cipher_entries = entries
@@ -1203,25 +1337,25 @@ class CipherGeneratorGUI:
                 return entries
 
         # Full regeneration needed (type changed or no cache)
-        words = self.db.get_cipher_keys(cipher_type)
-
-        if not words:
-            # Generate sample entries if database is empty
-            entries = [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
-        elif key_type == "double_char":
-            # Unique two-character keys — generate the full pool upfront
-            unique_keys = self._generate_unique_double_char_keys(num_entries)
-            entries = []
-            for i in range(num_entries):
-                word = random.choice(words)
-                entries.append((word, unique_keys[i]))
+        if cipher_type == "alphabet":
+            letters = list('ABCDEFGHIJKLMNOPQRSTUVWXYZ')[:min(num_entries, 26)]
+            if key_type == "double_char":
+                unique_keys = self._generate_unique_double_char_keys(len(letters))
+                entries = list(zip(letters, unique_keys))
+            else:
+                entries = [(l, self._generate_key_value(cipher_type, key_type)) for l in letters]
         else:
-            # Create entries: word + random key number
-            entries = []
-            for i in range(num_entries):
-                word = random.choice(words)
-                key_val = self._generate_key_value(cipher_type, key_type)
-                entries.append((word, key_val))
+            words = self.db.get_cipher_keys(cipher_type)
+            if not words:
+                entries = [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
+            elif key_type == "double_char":
+                unique_keys = self._generate_unique_double_char_keys(num_entries)
+                entries = [(random.choice(words), unique_keys[i]) for i in range(num_entries)]
+            else:
+                entries = [
+                    (random.choice(words), self._generate_key_value(cipher_type, key_type))
+                    for _ in range(num_entries)
+                ]
 
         # Cache the entries and config state
         self._cached_cipher_entries = entries
@@ -1231,26 +1365,38 @@ class CipherGeneratorGUI:
 
         return entries
 
-    def _build_table_config(self) -> TableCodesConfig:
-        """Build a TableCodesConfig from the current GUI state."""
+    def _build_table_config_from_panel(self, panel: _TablePanel) -> TableCodesConfig:
+        """Build a TableCodesConfig from one panel's current state."""
+        content_type = panel.content_var.get()
+        num_sym = panel.num_symbols_var.get() if content_type != "alphabet" else 0
+        if content_type == "words":
+            if panel.cached_words is None:
+                panel.cached_words = self.db.get_table_words(num_sym) if num_sym > 0 else []
+            fetched_words = panel.cached_words
+        else:
+            panel.cached_words = None  # clear stale cache if user switched away from words
+            fetched_words = None
         return TableCodesConfig(
-            content_type=self.table_content_var.get(),
-            num_codes=self.table_num_codes_var.get(),
-            use_common_boost=self.table_common_boost_var.get(),
-            common_codes=self.table_common_codes_var.get(),
-            draw_vertical_lines=self.table_vertical_lines_var.get(),
-            column_spacing=self.table_col_spacing_var.get(),
-            row_spacing=self.table_row_spacing_var.get(),
-            use_pair_grid=self.table_pair_grid_var.get() and not self.table_common_boost_var.get(),
+            content_type=content_type,
+            num_symbols=num_sym,
+            words=fetched_words,
+            num_codes=panel.num_codes_var.get(),
+            use_common_boost=panel.common_boost_var.get(),
+            common_codes=panel.common_codes_var.get(),
+            draw_vertical_lines=panel.vertical_lines_var.get(),
+            column_spacing=panel.col_spacing_var.get(),
+            row_spacing=panel.row_spacing_var.get(),
+            use_pair_grid=panel.pair_grid_var.get() and not panel.common_boost_var.get(),
+            draw_header_line=panel.draw_header_line_var.get(),
         )
 
-    def _get_or_generate_code_table(self, table_config: TableCodesConfig) -> dict:
-        """Return a cached symbol→codes assignment, generating one if needed.
+    def _get_or_generate_code_table_for_panel(
+        self, panel: _TablePanel, table_config: TableCodesConfig
+    ) -> dict:
+        """Return a cached symbol→codes assignment for *panel*, generating if needed.
 
-        The cache is keyed on (content_type, num_codes, use_common_boost,
-        common_codes) — only content-defining settings.  Visual settings
-        (font size, symbols per row, variation level, …) do NOT trigger
-        regeneration, so changing font size won't reshuffle all the numbers.
+        Cache key: (content_type, num_codes, use_common_boost, common_codes).
+        Visual settings (font size, row spacing, …) do NOT invalidate the cache.
         """
         from src.generators.table_codes_generator import TableCodesGenerator
 
@@ -1261,19 +1407,18 @@ class CipherGeneratorGUI:
             table_config.common_codes,
         )
 
-        if self._cached_code_table is not None and self._cached_code_table_key == cache_key:
-            return self._cached_code_table
+        if panel.cached_code_table is not None and panel.cached_code_table_key == cache_key:
+            return panel.cached_code_table
 
-        # Generate fresh code table
         gen = TableCodesGenerator(
             config=table_config,
-            font_size=self.table_font_size_var.get(),
+            font_size=panel.font_size_var.get(),
             spacing=self.spacing_var.get(),
         )
         code_table = gen.generate_code_table()
 
-        self._cached_code_table = code_table
-        self._cached_code_table_key = cache_key
+        panel.cached_code_table = code_table
+        panel.cached_code_table_key = cache_key
         return code_table
 
     @staticmethod
@@ -1302,7 +1447,9 @@ class CipherGeneratorGUI:
     @staticmethod
     def _generate_key_number(cipher_type: str) -> int:
         """Generate a random key number based on cipher type"""
-        if cipher_type == 'substitution':
+        if cipher_type == 'alphabet':
+            return random.randint(1, 99)
+        elif cipher_type == 'substitution':
             return random.randint(100, 250)
         elif cipher_type == 'bigram':
             return random.randint(70, 99)
