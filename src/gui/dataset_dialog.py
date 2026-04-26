@@ -310,6 +310,11 @@ class DatasetDialog(tk.Toplevel):
                 row=0, column=i, sticky=tk.W, padx=4)
         r += 1
 
+        nsym_lo, nsym_hi = self._panel_range(outer, r, "Num Entries:", 1, 200, 5, 20)
+        ttk.Label(outer, text="(ignored for alphabet — always full)",
+                  font=("TkDefaultFont", 8), foreground="gray").grid(
+            row=r, column=2, sticky=tk.W, padx=5)
+        r += 1
         codes_lo, codes_hi = self._panel_range(outer, r, "Codes/Symbol:", 1, 10, 1, 5)
         r += 1
         boost_var = self._panel_toggle(outer, r, "Common Boost:", "random")
@@ -336,6 +341,7 @@ class DatasetDialog(tk.Toplevel):
         self._dataset_table_panels.append({
             "include": include_var,
             "content_types": content_vars,
+            "nsym_lo": nsym_lo, "nsym_hi": nsym_hi,
             "codes_lo": codes_lo, "codes_hi": codes_hi,
             "common_boost": boost_var,
             "ccodes_lo": ccodes_lo, "ccodes_hi": ccodes_hi,
@@ -384,6 +390,7 @@ class DatasetDialog(tk.Toplevel):
             table_configs.append(TableRangeConfig(
                 include=p["include"].get(),
                 content_types=content_types,
+                num_symbols_range=(p["nsym_lo"].get(), p["nsym_hi"].get()),
                 num_codes_range=(p["codes_lo"].get(), p["codes_hi"].get()),
                 common_boost=p["common_boost"].get(),
                 common_codes_range=(p["ccodes_lo"].get(), p["ccodes_hi"].get()),
