@@ -226,10 +226,24 @@ class CipherImageGenerator:
                     col_height = max_height - top_margin
                     entries_per_col = max(1, int(col_height // estimated_entry_height))
                     next_col_entries = cipher_entries[idx: idx + entries_per_col]
-                    char_w = self.font_config.font_size * 0.6
-                    max_entry_width = (
-                        max(len(ct + separator + kv) * char_w for ct, kv in next_col_entries)
-                    ) if next_col_entries else 0
+
+                    # Measure with the actual font so proportional glyph widths are correct.
+                    # Add 20 px for the two 10-px inter-part gaps and a 15 % margin for the
+                    # character-size / position variations applied during rendering.
+                    VARIATION_MARGIN = 1.15
+                    INTER_PART_GAPS = 20
+                    try:
+                        measure_font = ImageFont.truetype(font_path, self.font_config.font_size)
+                        max_entry_width = VARIATION_MARGIN * max(
+                            measure_font.getlength(ct + separator + kv) + INTER_PART_GAPS
+                            for ct, kv in next_col_entries
+                        ) if next_col_entries else 0
+                    except Exception:
+                        char_w = self.font_config.font_size * 0.6
+                        max_entry_width = max(
+                            len(ct + separator + kv) * char_w + INTER_PART_GAPS
+                            for ct, kv in next_col_entries
+                        ) if next_col_entries else 0
 
                     available_for_next = self.paper_config.width - right_margin - next_col_x
                     if available_for_next < max_entry_width:
