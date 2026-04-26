@@ -167,9 +167,10 @@ class DatasetGenerator:
         ink_color = INK_COLOR_MAP.get(params["ink_color"], (44, 36, 22))
 
         current_y = params["start_y"]
+        bottom_limit = paper_config.height - params.get("bottom_margin", 50)
 
         # Title / header
-        if params.get("include_title", False):
+        if params.get("include_title", False) and current_y < bottom_limit:
             current_y = generator.render_title(
                 img, params["start_x"], current_y,
                 font_path=font_path,
@@ -177,18 +178,22 @@ class DatasetGenerator:
                 track_annotations=True,
                 ink_color=ink_color,
             )
-            # Transfer title annotations to shared manager
+            # Transfer title annotations to shared manager (within-paper only)
             for ann in generator.coco_manager.annotations:
-                ann["image_id"] = image_id
-                ann["id"] = coco_manager.annotation_id_counter
-                coco_manager.annotations.append(ann)
-                coco_manager.annotation_id_counter += 1
+                if self._ann_within_paper(ann, paper_config.width, paper_config.height):
+                    ann["image_id"] = image_id
+                    ann["id"] = coco_manager.annotation_id_counter
+                    coco_manager.annotations.append(ann)
+                    coco_manager.annotation_id_counter += 1
             generator.coco_manager.annotations.clear()
 
         # Table codes — loop over all table blocks in this image
         any_table_rendered = False
         for table_params in params.get("tables", []):
-            if table_params.get("include_title", False):
+            if current_y >= bottom_limit:
+                break  # no space left for any more content
+
+            if table_params.get("include_title", False) and current_y < bottom_limit:
                 current_y = generator.render_title(
                     img, params["start_x"], current_y,
                     font_path=font_path,
@@ -197,11 +202,15 @@ class DatasetGenerator:
                     ink_color=ink_color,
                 )
                 for ann in generator.coco_manager.annotations:
-                    ann["image_id"] = image_id
-                    ann["id"] = coco_manager.annotation_id_counter
-                    coco_manager.annotations.append(ann)
-                    coco_manager.annotation_id_counter += 1
+                    if self._ann_within_paper(ann, paper_config.width, paper_config.height):
+                        ann["image_id"] = image_id
+                        ann["id"] = coco_manager.annotation_id_counter
+                        coco_manager.annotations.append(ann)
+                        coco_manager.annotation_id_counter += 1
                 generator.coco_manager.annotations.clear()
+
+            if current_y >= bottom_limit:
+                break
 
             _ct = table_params["content_type"]
             _num_sym = table_params.get("num_symbols", 0)
@@ -248,8 +257,8 @@ class DatasetGenerator:
             current_y += params["spacing"] * 2  # extra gap before column pairs
 
         # Column pairs
-        if params["include_column_pairs"]:
-            if params.get("include_cp_title", False):
+        if params["include_column_pairs"] and current_y < bottom_limit:
+            if params.get("include_cp_title", False) and current_y < bottom_limit:
                 current_y = generator.render_title(
                     img, params["start_x"], current_y,
                     font_path=font_path,
@@ -258,37 +267,39 @@ class DatasetGenerator:
                     ink_color=ink_color,
                 )
                 for ann in generator.coco_manager.annotations:
-                    ann["image_id"] = image_id
-                    ann["id"] = coco_manager.annotation_id_counter
-                    coco_manager.annotations.append(ann)
-                    coco_manager.annotation_id_counter += 1
+                    if self._ann_within_paper(ann, paper_config.width, paper_config.height):
+                        ann["image_id"] = image_id
+                        ann["id"] = coco_manager.annotation_id_counter
+                        coco_manager.annotations.append(ann)
+                        coco_manager.annotation_id_counter += 1
                 generator.coco_manager.annotations.clear()
 
-            entries = self._get_cipher_entries(
-                params["cipher_type"], params["key_type"], params["num_entries"]
-            )
-            generator.render_cipher_text(
-                img,
-                entries,
-                params["start_x"],
-                current_y,
-                block_id=1,
-                font_path=font_path,
-                use_variations=use_variations,
-                track_annotations=True,
-                right_margin=params["right_margin"],
-                bottom_margin=params["bottom_margin"],
-                ink_color=ink_color,
-                pair_format=params.get("pair_format", "text_first"),
-                line_spacing_variation=float(params.get("line_spacing_jitter", 0)),
-            )
-            # The generator stores pair/element annotations in its own coco_manager.
-            # Transfer them to the shared one.
-            for ann in generator.coco_manager.annotations:
-                ann["image_id"] = image_id
-                ann["id"] = coco_manager.annotation_id_counter
-                coco_manager.annotations.append(ann)
-                coco_manager.annotation_id_counter += 1
+            if current_y < bottom_limit:
+                entries = self._get_cipher_entries(
+                    params["cipher_type"], params["key_type"], params["num_entries"]
+                )
+                generator.render_cipher_text(
+                    img,
+                    entries,
+                    params["start_x"],
+                    current_y,
+                    block_id=1,
+                    font_path=font_path,
+                    use_variations=use_variations,
+                    track_annotations=True,
+                    right_margin=params["right_margin"],
+                    bottom_margin=params["bottom_margin"],
+                    ink_color=ink_color,
+                    pair_format=params.get("pair_format", "text_first"),
+                    line_spacing_variation=float(params.get("line_spacing_jitter", 0)),
+                )
+                # Transfer column-pairs annotations (within-paper only)
+                for ann in generator.coco_manager.annotations:
+                    if self._ann_within_paper(ann, paper_config.width, paper_config.height):
+                        ann["image_id"] = image_id
+                        ann["id"] = coco_manager.annotation_id_counter
+                        coco_manager.annotations.append(ann)
+                        coco_manager.annotation_id_counter += 1
 
         img.save(os.path.join(images_dir, filename))
 
@@ -300,6 +311,15 @@ class DatasetGenerator:
     def _is_empty(params: dict) -> bool:
         """Return True when sampled params would produce a paper with no cipher content."""
         return not params.get("tables") and not params.get("include_column_pairs", False)
+
+    @staticmethod
+    def _ann_within_paper(ann: dict, paper_width: int, paper_height: int) -> bool:
+        """Return True only when the annotation bbox lies fully within the paper."""
+        bbox = ann.get("bbox")
+        if not bbox or len(bbox) < 4:
+            return False
+        x, y, w, h = bbox
+        return w > 0 and h > 0 and x >= 0 and y >= 0 and x + w <= paper_width and y + h <= paper_height
 
     def _resolve_font(self, font_name: str) -> Optional[str]:
         if font_name == "Random":
