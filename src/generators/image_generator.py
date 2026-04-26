@@ -198,6 +198,15 @@ class CipherImageGenerator:
             if self.font_config.column_separator != 'none':
                 estimated_entry_height += self.font_config.font_size * 0.6
 
+            # Bail out early if there is no room for even the first entry.
+            # Without this check the first entry (idx == 0) bypasses the column-
+            # transition guard and renders below the paper, producing phantom
+            # annotations that don't correspond to visible content.
+            if start_y + estimated_entry_height > max_height:
+                print(f"[WARNING] render_cipher_text: start_y={start_y} leaves no room "
+                      f"for entries (max_height={max_height}), skipping.")
+                return int(start_y)
+
             print(f"[DEBUG] render_cipher_text: use_variations={use_variations}, track_annotations={track_annotations}")
             print(f"[DEBUG] Total entries to render: {len(cipher_entries)}")
             print(f"[DEBUG] Multi-column layout: max_height={max_height}, column_spacing={column_spacing}")
