@@ -21,6 +21,7 @@ from src.models.cipher_type import CipherType
 from src.models.table_codes_config import TableCodesConfig
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
+from src.generators.augmentation import apply_photo_augmentation
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.database.font_manager import FontManager
 from src.gui.dataset_dialog import DatasetDialog
@@ -1240,6 +1241,7 @@ class CipherGeneratorGUI:
                 self.font_manager.mark_font_used(selected_font_path, self.db)
 
             # Store for saving
+            img = apply_photo_augmentation(img)
             self.preview_image = img
 
             # Display preview
