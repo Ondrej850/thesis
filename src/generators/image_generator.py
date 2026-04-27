@@ -539,6 +539,8 @@ class CipherImageGenerator:
         ink_color: Optional[Tuple[int, int, int]] = None,
         title_text: Optional[str] = None,
         title_font_size: Optional[int] = None,
+        right_margin: int = 50,
+        bottom_margin: int = 50,
     ) -> int:
         """Render a title / header line above the cipher content.
 
@@ -561,6 +563,13 @@ class CipherImageGenerator:
         text = title_text or random.choice(self.TITLE_TEMPLATES)
         words = text.split()
 
+        max_y = self.paper_config.height - bottom_margin
+        x_limit = self.paper_config.width - right_margin
+
+        # Skip rendering entirely if there's no vertical room
+        if start_y + fs > max_y:
+            return int(start_y)
+
         renderer = self.cipher_renderer._text_renderer
 
         # Track element bboxes added during title rendering
@@ -569,10 +578,13 @@ class CipherImageGenerator:
         # Render each word as a separate tracked element
         current_x = float(start_x)
         for word in words:
+            if current_x >= x_limit:
+                break
             end_x, end_y = renderer.render_varied_text(
                 img, word, current_x, start_y,
                 font_path or "", fs, base_color,
                 track_annotations=track_annotations,
+                x_limit=x_limit,
             )
             # Use the actual end_x returned by the renderer (accounts for variations)
             current_x = end_x + fs * 0.4  # inter-word gap
@@ -622,6 +634,8 @@ class CipherImageGenerator:
         code_table: Optional[dict] = None,
         font_size: Optional[int] = None,
         ink_color: Optional[Tuple[int, int, int]] = None,
+        right_margin: int = 50,
+        bottom_margin: int = 50,
     ) -> int:
         """Render a homophonic code table on *img*.
 
@@ -657,6 +671,8 @@ class CipherImageGenerator:
             code_table=code_table,
             paper_width=self.paper_config.width,
             paper_height=self.paper_config.height,
+            right_margin=right_margin,
+            bottom_margin=bottom_margin,
             track_annotations=track_annotations,
         )
 

@@ -169,6 +169,9 @@ class DatasetGenerator:
         current_y = params["start_y"]
         bottom_limit = paper_config.height - params.get("bottom_margin", 50)
 
+        right_margin = params.get("right_margin", 50)
+        bottom_margin = params.get("bottom_margin", 50)
+
         # Title / header
         if params.get("include_title", False) and current_y < bottom_limit:
             current_y = generator.render_title(
@@ -177,6 +180,8 @@ class DatasetGenerator:
                 use_variations=use_variations,
                 track_annotations=True,
                 ink_color=ink_color,
+                right_margin=right_margin,
+                bottom_margin=bottom_margin,
             )
             # Transfer title annotations to shared manager (within-paper only)
             for ann in generator.coco_manager.annotations:
@@ -200,6 +205,8 @@ class DatasetGenerator:
                     use_variations=use_variations,
                     track_annotations=True,
                     ink_color=ink_color,
+                    right_margin=right_margin,
+                    bottom_margin=bottom_margin,
                 )
                 for ann in generator.coco_manager.annotations:
                     if self._ann_within_paper(ann, paper_config.width, paper_config.height):
@@ -246,6 +253,8 @@ class DatasetGenerator:
                 code_table=code_table,
                 paper_width=paper_config.width,
                 paper_height=paper_config.height,
+                right_margin=right_margin,
+                bottom_margin=bottom_margin,
                 track_annotations=True,
             )
             table_anns = table_gen.get_annotations(image_id)
@@ -265,6 +274,8 @@ class DatasetGenerator:
                     use_variations=use_variations,
                     track_annotations=True,
                     ink_color=ink_color,
+                    right_margin=right_margin,
+                    bottom_margin=bottom_margin,
                 )
                 for ann in generator.coco_manager.annotations:
                     if self._ann_within_paper(ann, paper_config.width, paper_config.height):

@@ -1160,6 +1160,8 @@ class CipherGeneratorGUI:
                     track_annotations=True,
                     ink_color=ink_color,
                     title_text=title_text,
+                    right_margin=right_margin,
+                    bottom_margin=bottom_margin,
                 )
 
             # ── Table codes (one panel per enabled table) ────────────────
@@ -1176,6 +1178,8 @@ class CipherGeneratorGUI:
                         track_annotations=True,
                         ink_color=ink_color,
                         title_text=t_text,
+                        right_margin=right_margin,
+                        bottom_margin=bottom_margin,
                     )
                 table_config = self._build_table_config_from_panel(panel)
                 code_table = self._get_or_generate_code_table_for_panel(panel, table_config)
@@ -1187,6 +1191,8 @@ class CipherGeneratorGUI:
                     code_table=code_table,
                     font_size=panel.font_size_var.get(),
                     ink_color=ink_color,
+                    right_margin=right_margin,
+                    bottom_margin=bottom_margin,
                 )
                 current_y += self.spacing_var.get() * 2
                 any_table_rendered = True
@@ -1205,6 +1211,8 @@ class CipherGeneratorGUI:
                         track_annotations=True,
                         ink_color=ink_color,
                         title_text=title_text,
+                        right_margin=right_margin,
+                        bottom_margin=bottom_margin,
                     )
                 cipher_entries = self._get_cipher_entries()
                 generator.render_cipher_text(
