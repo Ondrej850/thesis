@@ -312,12 +312,59 @@ class DatasetGenerator:
                         coco_manager.annotations.append(ann)
                         coco_manager.annotation_id_counter += 1
 
-        img = apply_photo_augmentation(img)
+        img = self._augment_and_update_annotations(img, image_id, coco_manager)
         img.save(os.path.join(images_dir, filename))
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _augment_and_update_annotations(img, image_id: int,
+                                        coco_manager: COCOAnnotationManager):
+        """Augment the image and keep COCO bboxes in sync with spatial transforms.
+
+        Annotations whose bbox is fully warped off-canvas (or shrinks below
+        the visibility threshold) are dropped. Surviving annotations get
+        their bbox, area, and segmentation rewritten to match the new pixel
+        positions.
+        """
+        # Snapshot annotations belonging to this image, with their position
+        # in the manager's list so we can rewrite or drop them in place.
+        owned = [(i, ann) for i, ann in enumerate(coco_manager.annotations)
+                 if ann.get("image_id") == image_id]
+
+        if not owned:
+            return apply_photo_augmentation(img)
+
+        bboxes = [list(ann["bbox"]) for _, ann in owned]
+        labels = [i for i, _ in owned]  # annotation list-index as label
+
+        new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
+            img, bboxes=bboxes, labels=labels,
+        )
+
+        survived = {
+            int(label): list(bbox)
+            for label, bbox in zip(surviving_labels, new_bboxes)
+        }
+
+        rebuilt = []
+        for i, ann in enumerate(coco_manager.annotations):
+            if ann.get("image_id") != image_id:
+                rebuilt.append(ann)
+                continue
+            new_bbox = survived.get(i)
+            if new_bbox is None:
+                continue  # warped fully off-canvas → drop
+            x, y, w, h = (float(v) for v in new_bbox)
+            ann["bbox"] = [x, y, w, h]
+            ann["area"] = w * h
+            ann["segmentation"] = [[x, y, x + w, y, x + w, y + h, x, y + h]]
+            rebuilt.append(ann)
+        coco_manager.annotations = rebuilt
+
+        return new_img
 
     @staticmethod
     def _is_empty(params: dict) -> bool:

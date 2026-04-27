@@ -60,7 +60,7 @@ def _add_vignette(image: np.ndarray, strength: float = 0.5) -> np.ndarray:
     return (image * attenuation[:, :, None]).astype(np.uint8)
 
 
-_TRANSFORM = A.Compose([
+_PIPELINE = [
     A.ToSepia(p=0.5),
     A.ColorJitter(
         brightness=(0.7, 1.3),
@@ -77,23 +77,49 @@ _TRANSFORM = A.Compose([
         shadow_intensity_range=(0.1, 0.3),
         p=0.25,
     ),
+    A.Perspective(scale=(0.02, 0.05), p=0.6),
     A.OneOf([
         A.GaussianBlur(blur_limit=(3, 3)),
         A.MotionBlur(blur_limit=3),
     ], p=0.2),
     A.ImageCompression(quality_range=(60, 95), p=0.5),
-])
+]
+
+# Bbox-aware transform: clips bboxes to image bounds, drops any that
+# end up smaller than 4 px² or with <30 % of their area still visible.
+_TRANSFORM = A.Compose(
+    _PIPELINE,
+    bbox_params=A.BboxParams(
+        format="coco",
+        label_fields=["labels"],
+        clip=True,
+        filter_invalid_bboxes=True,
+        min_area=4.0,
+        min_visibility=0.3,
+    ),
+)
 
 
-def apply_photo_augmentation(pil_img: Image.Image) -> Image.Image:
+def apply_photo_augmentation(
+    pil_img: Image.Image,
+    bboxes=None,
+    labels=None,
+):
     """Apply photo-realistic augmentation to a generated document PIL image.
 
     Pipeline:
       1. Dark gradient edges (book / scanner shadow)
       2. Optional vignette
-      3. Albumentations transforms (aging, noise, blur, compression)
+      3. Albumentations transforms (aging, noise, blur, perspective, compression)
 
-    Returns a new RGB PIL Image.
+    If *bboxes* is provided (list of [x, y, w, h] in COCO format) the
+    spatial transforms (Perspective) are applied to the bboxes too.
+    *labels* must be a parallel list of identifiers so the caller can map
+    surviving bboxes back to their annotations after some are dropped.
+
+    Returns:
+        Image.Image                       — when bboxes is None
+        (Image.Image, bboxes, labels)     — otherwise
     """
     img = np.array(pil_img.convert("RGB"))
 
@@ -103,6 +129,12 @@ def apply_photo_augmentation(pil_img: Image.Image) -> Image.Image:
         strength = random.uniform(0.2, 0.6)
         img = _add_vignette(img, strength)
 
-    img = _TRANSFORM(image=img)["image"]
+    bboxes_in = list(bboxes) if bboxes is not None else []
+    labels_in = list(labels) if labels is not None else []
 
-    return Image.fromarray(img)
+    result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
+    out_img = Image.fromarray(result["image"])
+
+    if bboxes is None:
+        return out_img
+    return out_img, result["bboxes"], result["labels"]

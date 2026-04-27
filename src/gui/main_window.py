@@ -1232,8 +1232,8 @@ class CipherGeneratorGUI:
             if selected_font_path:
                 self.font_manager.mark_font_used(selected_font_path, self.db)
 
-            # Store for saving
-            img = apply_photo_augmentation(img)
+            # Store for saving — augment image and update annotations together
+            img = self._augment_with_annotations(img, generator)
             self.preview_image = img
 
             # Display preview
@@ -1455,6 +1455,45 @@ class CipherGeneratorGUI:
             return random.randint(900, 950)
         else:
             return random.randint(100, 200)
+
+    @staticmethod
+    def _augment_with_annotations(img: Image.Image, generator) -> Image.Image:
+        """Run augmentation and keep generator.coco_manager bboxes in sync.
+
+        The Perspective transform warps pixel positions, so any annotation
+        bbox must be transformed alongside the image. Annotations whose
+        bbox ends up off-canvas (or below the visibility threshold) are
+        dropped from the manager.
+        """
+        coco = generator.coco_manager
+        anns = coco.annotations
+        if not anns:
+            return apply_photo_augmentation(img)
+
+        bboxes = [list(a["bbox"]) for a in anns]
+        labels = list(range(len(anns)))
+
+        new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
+            img, bboxes=bboxes, labels=labels,
+        )
+
+        survived = {
+            int(label): list(bbox)
+            for label, bbox in zip(surviving_labels, new_bboxes)
+        }
+
+        rebuilt = []
+        for i, ann in enumerate(anns):
+            new_bbox = survived.get(i)
+            if new_bbox is None:
+                continue
+            x, y, w, h = (float(v) for v in new_bbox)
+            ann["bbox"] = [x, y, w, h]
+            ann["area"] = w * h
+            ann["segmentation"] = [[x, y, x + w, y, x + w, y + h, x, y + h]]
+            rebuilt.append(ann)
+        coco.annotations = rebuilt
+        return new_img
 
     def _display_preview(self, img: Image.Image):
         """Display preview image on canvas - scaled to fit entirely"""
