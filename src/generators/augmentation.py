@@ -61,28 +61,28 @@ def _add_vignette(image: np.ndarray, strength: float = 0.5) -> np.ndarray:
 
 
 _PIPELINE = [
-    A.ToSepia(p=0.5),
+    A.ToSepia(p=0.40),
     A.ColorJitter(
-        brightness=(0.7, 1.3),
-        contrast=(0.7, 1.3),
-        saturation=(0.8, 1.2),
-        hue=(-0.05, 0.05),
-        p=0.8,
+        brightness=(0.75, 1.25),
+        contrast=(0.75, 1.25),
+        saturation=(0.83, 1.17),
+        hue=(-0.04, 0.04),
+        p=0.65,
     ),
-    A.GaussNoise(std_range=(0.04, 0.15), p=0.8),
-    A.ISONoise(color_shift=(0.01, 0.05), intensity=(0.1, 0.4), p=0.5),
+    A.GaussNoise(std_range=(0.03, 0.12), p=0.65),
+    A.ISONoise(color_shift=(0.01, 0.04), intensity=(0.08, 0.33), p=0.40),
     A.RandomShadow(
         shadow_roi=(0.0, 0.0, 1.0, 1.0),
         num_shadows_limit=(1, 2),
-        shadow_intensity_range=(0.1, 0.3),
-        p=0.25,
+        shadow_intensity_range=(0.08, 0.25),
+        p=0.20,
     ),
-    A.Perspective(scale=(0.02, 0.05), p=0.6),
+    A.Perspective(scale=(0.016, 0.04), p=0.50),
     A.OneOf([
         A.GaussianBlur(blur_limit=(3, 3)),
         A.MotionBlur(blur_limit=3),
-    ], p=0.2),
-    A.ImageCompression(quality_range=(60, 95), p=0.5),
+    ], p=0.16),
+    A.ImageCompression(quality_range=(68, 96), p=0.40),
 ]
 
 # Bbox-aware transform: clips bboxes to image bounds, drops any that
@@ -125,8 +125,8 @@ def apply_photo_augmentation(
 
     img = add_book_edges(img)
 
-    if random.random() < 0.5:
-        strength = random.uniform(0.2, 0.6)
+    if random.random() < 0.40:
+        strength = random.uniform(0.16, 0.50)
         img = _add_vignette(img, strength)
 
     bboxes_in = list(bboxes) if bboxes is not None else []
