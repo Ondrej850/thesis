@@ -2,6 +2,7 @@ import random
 from typing import List, Optional, Tuple
 import os
 
+import numpy as np
 from src.models import PaperConfig, FontConfig
 from src.models.table_codes_config import TableCodesConfig
 from src.annotations.coco_manager import COCOAnnotationManager
@@ -42,6 +43,9 @@ class CipherImageGenerator:
         base_hex = random.choice(base_palette)
         img = Image.new('RGB', (self.paper_config.width, self.paper_config.height),
                         color=base_hex)
+
+        img = self._add_paper_grain(img)
+
         draw = ImageDraw.Draw(img)
 
         # Apply aging effects based on aging_level
@@ -89,6 +93,31 @@ class CipherImageGenerator:
         img = img.filter(ImageFilter.GaussianBlur(radius=0.5))
 
         return img
+
+    def _add_paper_grain(self, img: Image.Image) -> Image.Image:
+        """Add realistic paper grain: fine pixel noise + low-frequency tone patches."""
+        arr = np.array(img, dtype=np.float32)
+        h, w = arr.shape[:2]
+
+        # Fine grain — per-pixel noise across all channels (simulates paper surface)
+        grain = np.random.normal(0, 6, arr.shape).astype(np.float32)
+        arr += grain
+
+        # Low-frequency patches — coarse noise upsampled to full size,
+        # gives uneven tone like real paper (slightly lighter/darker areas)
+        tile = 12  # one tone-patch per ~12x12 px block
+        lf = np.random.normal(0, 10, (h // tile + 2, w // tile + 2)).astype(np.float32)
+        lf_img = Image.fromarray(np.clip(lf + 128, 0, 255).astype(np.uint8), mode='L')
+        lf_up = np.array(lf_img.resize((w, h), Image.BILINEAR), dtype=np.float32) - 128
+        # Apply equally to all channels so it shifts brightness, not colour
+        arr += lf_up[:, :, None] * 0.55
+
+        # Subtle horizontal fiber streaks — real paper has a grain direction
+        fiber = np.random.normal(0, 3, (h, 1)).astype(np.float32)
+        fiber = np.repeat(fiber, w, axis=1)
+        arr += fiber[:, :, None] * 0.4
+
+        return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
     def _hex_to_rgb(self, hex_color):
         """Convert hex color to RGB tuple"""
