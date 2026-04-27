@@ -2,6 +2,7 @@ import random
 from typing import List, Optional, Tuple
 import os
 
+import numpy as np
 from src.models import PaperConfig, FontConfig
 from src.models.table_codes_config import TableCodesConfig
 from src.annotations.coco_manager import COCOAnnotationManager
@@ -25,23 +26,42 @@ class CipherImageGenerator:
         self.current_image_id = None
 
     def create_aged_paper(self) -> Image.Image:
-        """Create aged paper background"""
+        """Create aged paper background with a randomly chosen base color."""
+        # Palette spanning clean white → warm cream → parchment → medium brown
+        base_palette = [
+            '#FAFAF7',  # clean white
+            '#F7F2E8',  # very light cream
+            '#F2EBD9',  # light cream
+            '#EDE0C4',  # warm cream / parchment light
+            '#E8D5B0',  # classic parchment
+            '#DFCA9C',  # warm tan
+            '#D4B88A',  # medium tan
+            '#C8A878',  # golden brown (like aged document photo)
+            '#BF9C6A',  # medium brown
+            '#B89060',  # darker warm brown
+        ]
+        base_hex = random.choice(base_palette)
         img = Image.new('RGB', (self.paper_config.width, self.paper_config.height),
-                        color='#F4E8D0')
+                        color=base_hex)
+
+        img = self._add_paper_grain(img)
+
         draw = ImageDraw.Draw(img)
 
         # Apply aging effects based on aging_level
         aging = self.paper_config.aging_level / 100.0
 
-        # Add yellowing/browning — draw all dots onto a single overlay
+        # Add yellowing/browning — draw all dots onto a single overlay.
+        # Derive aging dot colors as slightly darkened/warmer shades of the base.
         num_dots = int(500 * aging)
         if num_dots > 0:
             overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
             overlay_draw = ImageDraw.Draw(overlay)
+            base_rgb = self._hex_to_rgb(base_hex)
             aging_colors = [
-                self._hex_to_rgb('#D4C4A8'),
-                self._hex_to_rgb('#C8B896'),
-                self._hex_to_rgb('#BCA87A'),
+                tuple(max(0, c - d) for c, d in zip(base_rgb, (20, 10, 5))),
+                tuple(max(0, c - d) for c, d in zip(base_rgb, (35, 20, 10))),
+                tuple(max(0, c - d) for c, d in zip(base_rgb, (50, 30, 15))),
             ]
             for _ in range(num_dots):
                 x = random.randint(0, self.paper_config.width)
@@ -73,6 +93,31 @@ class CipherImageGenerator:
         img = img.filter(ImageFilter.GaussianBlur(radius=0.5))
 
         return img
+
+    def _add_paper_grain(self, img: Image.Image) -> Image.Image:
+        """Add realistic paper grain: fine pixel noise + low-frequency tone patches."""
+        arr = np.array(img, dtype=np.float32)
+        h, w = arr.shape[:2]
+
+        # Fine grain — per-pixel noise across all channels (simulates paper surface)
+        grain = np.random.normal(0, 6, arr.shape).astype(np.float32)
+        arr += grain
+
+        # Low-frequency patches — coarse noise upsampled to full size,
+        # gives uneven tone like real paper (slightly lighter/darker areas)
+        tile = 12  # one tone-patch per ~12x12 px block
+        lf = np.random.normal(0, 10, (h // tile + 2, w // tile + 2)).astype(np.float32)
+        lf_img = Image.fromarray(np.clip(lf + 128, 0, 255).astype(np.uint8), mode='L')
+        lf_up = np.array(lf_img.resize((w, h), Image.BILINEAR), dtype=np.float32) - 128
+        # Apply equally to all channels so it shifts brightness, not colour
+        arr += lf_up[:, :, None] * 0.55
+
+        # Subtle horizontal fiber streaks — real paper has a grain direction
+        fiber = np.random.normal(0, 3, (h, 1)).astype(np.float32)
+        fiber = np.repeat(fiber, w, axis=1)
+        arr += fiber[:, :, None] * 0.4
+
+        return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
 
     def _hex_to_rgb(self, hex_color):
         """Convert hex color to RGB tuple"""
@@ -494,6 +539,8 @@ class CipherImageGenerator:
         ink_color: Optional[Tuple[int, int, int]] = None,
         title_text: Optional[str] = None,
         title_font_size: Optional[int] = None,
+        right_margin: int = 50,
+        bottom_margin: int = 50,
     ) -> int:
         """Render a title / header line above the cipher content.
 
@@ -516,6 +563,13 @@ class CipherImageGenerator:
         text = title_text or random.choice(self.TITLE_TEMPLATES)
         words = text.split()
 
+        max_y = self.paper_config.height - bottom_margin
+        x_limit = self.paper_config.width - right_margin
+
+        # Skip rendering entirely if there's no vertical room
+        if start_y + fs > max_y:
+            return int(start_y)
+
         renderer = self.cipher_renderer._text_renderer
 
         # Track element bboxes added during title rendering
@@ -524,10 +578,13 @@ class CipherImageGenerator:
         # Render each word as a separate tracked element
         current_x = float(start_x)
         for word in words:
+            if current_x >= x_limit:
+                break
             end_x, end_y = renderer.render_varied_text(
                 img, word, current_x, start_y,
                 font_path or "", fs, base_color,
                 track_annotations=track_annotations,
+                x_limit=x_limit,
             )
             # Use the actual end_x returned by the renderer (accounts for variations)
             current_x = end_x + fs * 0.4  # inter-word gap
@@ -577,6 +634,8 @@ class CipherImageGenerator:
         code_table: Optional[dict] = None,
         font_size: Optional[int] = None,
         ink_color: Optional[Tuple[int, int, int]] = None,
+        right_margin: int = 50,
+        bottom_margin: int = 50,
     ) -> int:
         """Render a homophonic code table on *img*.
 
@@ -612,6 +671,8 @@ class CipherImageGenerator:
             code_table=code_table,
             paper_width=self.paper_config.width,
             paper_height=self.paper_config.height,
+            right_margin=right_margin,
+            bottom_margin=bottom_margin,
             track_annotations=track_annotations,
         )
 

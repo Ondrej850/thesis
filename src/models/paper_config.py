@@ -10,7 +10,6 @@ from typing import List
 class PaperConfig:
     """Configuration for paper appearance"""
     aging_level: int  # 0-100
-    paper_type: str
     defects: List[str]
     width: int = 800
     height: int = 1100

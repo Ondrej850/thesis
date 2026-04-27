@@ -38,7 +38,6 @@ class DatasetConfig:
 
     # Paper
     aging_level_range: Tuple[int, int] = (20, 80)
-    paper_types: List[str] = field(default_factory=list)
     defects_mode: str = "random"  # "random", "all", "none"
     defects_pool: List[str] = field(
         default_factory=lambda: ["wrinkled_edges", "burns", "stains", "holes", "tears", "yellowing"]
@@ -183,7 +182,6 @@ class DatasetConfig:
         return {
             # Paper
             "aging_level": random.randint(*self.aging_level_range),
-            "paper_type": random.choice(self.paper_types) if self.paper_types else "Parchment Medium",
             "defects": defects,
 
             # Column pairs
