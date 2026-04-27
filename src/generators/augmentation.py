@@ -67,9 +67,9 @@ _TRANSFORM = A.Compose([
     A.ISONoise(color_shift=(0.01, 0.05), intensity=(0.1, 0.4), p=0.5),
     A.RandomShadow(
         shadow_roi=(0.0, 0.0, 1.0, 1.0),
-        num_shadows_limit=(1, 3),
-        shadow_intensity_range=(0.3, 0.6),
-        p=0.4,
+        num_shadows_limit=(1, 2),
+        shadow_intensity_range=(0.1, 0.3),
+        p=0.25,
     ),
     A.Perspective(scale=(0.02, 0.05), p=0.6),
     A.OneOf([
