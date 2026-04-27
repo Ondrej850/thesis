@@ -136,7 +136,6 @@ class DatasetGenerator:
         """Generate a single image from sampled *params*."""
         paper_config = PaperConfig(
             aging_level=params["aging_level"],
-            paper_type=params["paper_type"],
             defects=params["defects"],
         )
         font_config = FontConfig(

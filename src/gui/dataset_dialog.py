@@ -32,8 +32,7 @@ TOGGLE_OPTIONS = ["always", "never", "random"]
 class DatasetDialog(tk.Toplevel):
     """Dialog for configuring and running batch dataset generation."""
 
-    def __init__(self, parent, db_manager: DatabaseManager, font_manager: FontManager,
-                 paper_types: list):
+    def __init__(self, parent, db_manager: DatabaseManager, font_manager: FontManager):
         super().__init__(parent)
         self.title("Generate Annotated Dataset")
         self.geometry("620x700")
@@ -42,7 +41,6 @@ class DatasetDialog(tk.Toplevel):
 
         self.db = db_manager
         self.font_manager = font_manager
-        self.paper_types = paper_types
         self._generator = None
 
         self._build_ui()
@@ -195,7 +193,6 @@ class DatasetDialog(tk.Toplevel):
     def _section_paper(self, row: int) -> int:
         row = self._add_section_label(row, "Paper")
         self._aging_lo, self._aging_hi, row = self._add_range(row, "Aging Level:", 0, 100, 20, 80)
-        self._paper_type_vars, row = self._add_checkboxes(row, "Paper Types:", self.paper_types)
         self._defects_toggle, row = self._add_toggle(row, "Defects:", "random")
         font_names = ["Random"] + self.font_manager.get_all_font_names()
         self._font_vars, row = self._add_checkboxes(row, "Fonts:", font_names, defaults=["Random"])
@@ -410,7 +407,6 @@ class DatasetDialog(tk.Toplevel):
             ignore_empty_papers=self.ignore_empty_var.get(),
             # Paper
             aging_level_range=(self._aging_lo.get(), self._aging_hi.get()),
-            paper_types=self._checked(self._paper_type_vars) or self.paper_types[:1],
             defects_mode=self._defects_toggle.get(),
             # Column pairs
             include_column_pairs=self._cp_toggle.get(),

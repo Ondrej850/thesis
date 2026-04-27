@@ -150,7 +150,6 @@ class CipherGeneratorGUI:
         # Cached paper image for consistent preview
         self._cached_paper_image = None
         self._cached_paper_aging = None
-        self._cached_paper_type = None
         self._cached_paper_defects = None
 
         # One _TablePanel per table added in the GUI (up to 3).
@@ -261,20 +260,10 @@ class CipherGeneratorGUI:
         aging_scale.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
         ttk.Label(frame, textvariable=self.aging_var).grid(row=0, column=2, padx=5)
 
-        # Paper type
-        ttk.Label(frame, text="Paper Type:").grid(row=1, column=0, sticky=tk.W, pady=2)
-        self.paper_type_var = tk.StringVar()
-        paper_types = [pt[1] for pt in self.db.get_paper_types()]
-        paper_combo = ttk.Combobox(frame, textvariable=self.paper_type_var,
-                                  values=paper_types, state='readonly', width=25)
-        paper_combo.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=2)
-        if paper_types:
-            paper_combo.current(0)
-
         # Defects checklist
-        ttk.Label(frame, text="Defects:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Defects:").grid(row=1, column=0, sticky=tk.W, pady=2)
         defects_frame = ttk.Frame(frame)
-        defects_frame.grid(row=2, column=1, columnspan=2, sticky=tk.W, pady=2)
+        defects_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=2)
 
         self.defect_vars = {}
         defects = ['wrinkled_edges', 'burns', 'stains', 'holes', 'tears', 'yellowing']
@@ -285,7 +274,7 @@ class CipherGeneratorGUI:
                            variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=5)
 
         # Font selection
-        ttk.Label(frame, text="Font:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Font:").grid(row=2, column=0, sticky=tk.W, pady=2)
         self.font_selection_var = tk.StringVar(value="Random")
 
         font_choices = ["Random"] + self.font_manager.get_all_font_names()
@@ -294,17 +283,17 @@ class CipherGeneratorGUI:
 
         font_combo = ttk.Combobox(frame, textvariable=self.font_selection_var,
                                   values=font_choices, state='readonly', width=25)
-        font_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
+        font_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Variation Level
-        ttk.Label(frame, text="Variation Level of Text:").grid(row=4, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Variation Level of Text:").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.variation_level_var = tk.StringVar(value="medium")
         variation_combo = ttk.Combobox(frame, textvariable=self.variation_level_var,
                                        values=['none', 'low', 'medium', 'high'],
                                        state='readonly', width=25)
-        variation_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
+        variation_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
         ttk.Label(frame, text="(Controls character size, position, rotation)",
-                  font=('TkDefaultFont', 8), foreground='gray').grid(row=4, column=2, sticky=tk.W, padx=5)
+                  font=('TkDefaultFont', 8), foreground='gray').grid(row=3, column=2, sticky=tk.W, padx=5)
 
     def setup_cipher_config(self, parent):
         """Setup column-pairs cipher configuration section."""
@@ -965,7 +954,6 @@ class CipherGeneratorGUI:
         """Bind change listeners to all config widgets for real-time preview"""
         # Paper config listeners (invalidate paper cache, keep cipher cache)
         self.aging_var.trace_add('write', self._on_paper_config_change)
-        self.paper_type_var.trace_add('write', self._on_paper_config_change)
         for var in self.defect_vars.values():
             var.trace_add('write', self._on_paper_config_change)
 
@@ -1103,7 +1091,6 @@ class CipherGeneratorGUI:
             # Create configurations
             paper_config = PaperConfig(
                 aging_level=self.aging_var.get(),
-                paper_type=self.paper_type_var.get(),
                 defects=[k for k, v in self.defect_vars.items() if v.get()],
                 width=800,
                 height=1100
@@ -1131,13 +1118,11 @@ class CipherGeneratorGUI:
 
             # Get current paper config state
             current_aging = self.aging_var.get()
-            current_paper_type = self.paper_type_var.get()
             current_defects = frozenset(k for k, v in self.defect_vars.items() if v.get())
 
             # Check if we can use cached paper image
             if (self._cached_paper_image is not None
                 and self._cached_paper_aging == current_aging
-                and self._cached_paper_type == current_paper_type
                 and self._cached_paper_defects == current_defects):
                 # Use cached paper (make a copy so text rendering doesn't affect cache)
                 img = self._cached_paper_image.copy()
@@ -1146,7 +1131,6 @@ class CipherGeneratorGUI:
                 img = generator.create_aged_paper()
                 self._cached_paper_image = img.copy()
                 self._cached_paper_aging = current_aging
-                self._cached_paper_type = current_paper_type
                 self._cached_paper_defects = current_defects
 
             include_pairs = self.include_column_pairs_var.get()
@@ -1645,5 +1629,4 @@ Annotations by Category:
 
     def open_dataset_dialog(self):
         """Open the batch dataset generation dialog."""
-        paper_types = [pt[1] for pt in self.db.get_paper_types()]
-        DatasetDialog(self.root, self.db, self.font_manager, paper_types)
+        DatasetDialog(self.root, self.db, self.font_manager)

@@ -25,23 +25,39 @@ class CipherImageGenerator:
         self.current_image_id = None
 
     def create_aged_paper(self) -> Image.Image:
-        """Create aged paper background"""
+        """Create aged paper background with a randomly chosen base color."""
+        # Palette spanning clean white → warm cream → parchment → medium brown
+        base_palette = [
+            '#FAFAF7',  # clean white
+            '#F7F2E8',  # very light cream
+            '#F2EBD9',  # light cream
+            '#EDE0C4',  # warm cream / parchment light
+            '#E8D5B0',  # classic parchment
+            '#DFCA9C',  # warm tan
+            '#D4B88A',  # medium tan
+            '#C8A878',  # golden brown (like aged document photo)
+            '#BF9C6A',  # medium brown
+            '#B89060',  # darker warm brown
+        ]
+        base_hex = random.choice(base_palette)
         img = Image.new('RGB', (self.paper_config.width, self.paper_config.height),
-                        color='#F4E8D0')
+                        color=base_hex)
         draw = ImageDraw.Draw(img)
 
         # Apply aging effects based on aging_level
         aging = self.paper_config.aging_level / 100.0
 
-        # Add yellowing/browning — draw all dots onto a single overlay
+        # Add yellowing/browning — draw all dots onto a single overlay.
+        # Derive aging dot colors as slightly darkened/warmer shades of the base.
         num_dots = int(500 * aging)
         if num_dots > 0:
             overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
             overlay_draw = ImageDraw.Draw(overlay)
+            base_rgb = self._hex_to_rgb(base_hex)
             aging_colors = [
-                self._hex_to_rgb('#D4C4A8'),
-                self._hex_to_rgb('#C8B896'),
-                self._hex_to_rgb('#BCA87A'),
+                tuple(max(0, c - d) for c, d in zip(base_rgb, (20, 10, 5))),
+                tuple(max(0, c - d) for c, d in zip(base_rgb, (35, 20, 10))),
+                tuple(max(0, c - d) for c, d in zip(base_rgb, (50, 30, 15))),
             ]
             for _ in range(num_dots):
                 x = random.randint(0, self.paper_config.width)
