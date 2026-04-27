@@ -71,7 +71,6 @@ _TRANSFORM = A.Compose([
         shadow_intensity_range=(0.1, 0.3),
         p=0.25,
     ),
-    A.Perspective(scale=(0.02, 0.05), p=0.6),
     A.OneOf([
         A.GaussianBlur(blur_limit=(3, 3)),
         A.MotionBlur(blur_limit=3),
