@@ -11,35 +11,41 @@ import albumentations as A
 
 
 def add_book_edges(image: np.ndarray) -> np.ndarray:
-    """Darken random edges with a gradient to mimic a book/scanner capture.
+    """Add gradient edges to mimic a book/scanner capture.
 
-    Each of the four edges independently decides whether to apply, so any
-    combination of 0-4 darkened edges is possible.
+    Randomly picks black or white for the whole image — never mixes both.
+    Each of the four edges independently decides whether to apply.
     """
     h, w = image.shape[:2]
-    result = image.copy()
+    arr = image.astype(np.float32)
+
+    # Choose edge colour once for this image: black (0) or white (255)
+    edge_fill = 0.0 if random.random() < 0.5 else 255.0
+
+    def _apply(region, grad_1d, axis):
+        # grad_1d goes 0→1 meaning "how much of the original to keep"
+        # at 0: pure edge_fill; at 1: pure original
+        shape = (1, len(grad_1d), 1) if axis == 1 else (len(grad_1d), 1, 1)
+        g = grad_1d.reshape(shape)
+        return (region * g + edge_fill * (1.0 - g)).astype(np.uint8)
 
     if random.random() < 0.3:
         ew = min(random.randint(20, 80), w)
-        grad = np.linspace(0.0, 1.0, ew)
-        result[:, :ew] = (result[:, :ew] * grad[None, :, None]).astype(np.uint8)
+        arr[:, :ew] = _apply(arr[:, :ew], np.linspace(0.0, 1.0, ew), axis=1)
 
     if random.random() < 0.15:
         ew = min(random.randint(20, 80), w)
-        grad = np.linspace(1.0, 0.0, ew)
-        result[:, -ew:] = (result[:, -ew:] * grad[None, :, None]).astype(np.uint8)
+        arr[:, -ew:] = _apply(arr[:, -ew:], np.linspace(1.0, 0.0, ew), axis=1)
 
     if random.random() < 0.2:
         ew = min(random.randint(20, 80), h)
-        grad = np.linspace(0.0, 1.0, ew)
-        result[:ew, :] = (result[:ew, :] * grad[:, None, None]).astype(np.uint8)
+        arr[:ew, :] = _apply(arr[:ew, :], np.linspace(0.0, 1.0, ew), axis=0)
 
     if random.random() < 0.15:
         ew = min(random.randint(20, 80), h)
-        grad = np.linspace(1.0, 0.0, ew)
-        result[-ew:, :] = (result[-ew:, :] * grad[:, None, None]).astype(np.uint8)
+        arr[-ew:, :] = _apply(arr[-ew:, :], np.linspace(1.0, 0.0, ew), axis=0)
 
-    return result
+    return arr.astype(np.uint8)
 
 
 def _add_vignette(image: np.ndarray, strength: float = 0.5) -> np.ndarray:
