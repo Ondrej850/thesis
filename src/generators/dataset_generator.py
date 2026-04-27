@@ -16,6 +16,7 @@ from src.models.dataset_config import DatasetConfig
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.generators.image_generator import CipherImageGenerator
 from src.generators.table_codes_generator import TableCodesGenerator
+from src.generators.augmentation import apply_photo_augmentation
 from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
 
@@ -301,6 +302,7 @@ class DatasetGenerator:
                         coco_manager.annotations.append(ann)
                         coco_manager.annotation_id_counter += 1
 
+        img = apply_photo_augmentation(img)
         img.save(os.path.join(images_dir, filename))
 
     # ------------------------------------------------------------------
