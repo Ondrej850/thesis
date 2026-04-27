@@ -73,9 +73,9 @@ _TRANSFORM = A.Compose([
     ),
     A.Perspective(scale=(0.02, 0.05), p=0.6),
     A.OneOf([
-        A.GaussianBlur(blur_limit=(3, 5)),
-        A.MotionBlur(blur_limit=5),
-    ], p=0.4),
+        A.GaussianBlur(blur_limit=(3, 3)),
+        A.MotionBlur(blur_limit=3),
+    ], p=0.2),
     A.ImageCompression(quality_range=(60, 95), p=0.5),
 ])
 
