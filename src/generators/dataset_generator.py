@@ -339,26 +339,15 @@ class DatasetGenerator:
 
         bboxes = [list(ann["bbox"]) for _, ann in owned]
         labels = [i for i, _ in owned]  # annotation list-index as label
-        orig_dims = {i: (ann["bbox"][2], ann["bbox"][3]) for i, ann in owned}
 
         new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
             img, bboxes=bboxes, labels=labels,
         )
 
-        # Drop surviving annotations where either dimension shrank below 70 % of
-        # the original. min_visibility already filters by area, but a wide title row
-        # can lose half its height yet still pass the area threshold while the text
-        # is mostly off-screen.
-        _DIM_THRESHOLD = 0.70
-        survived = {}
-        for label, new_bbox in zip(surviving_labels, new_bboxes):
-            idx = int(label)
-            orig_w, orig_h = orig_dims[idx]
-            new_w, new_h = new_bbox[2], new_bbox[3]
-            if (orig_w == 0 or orig_h == 0
-                    or (new_w / orig_w >= _DIM_THRESHOLD
-                        and new_h / orig_h >= _DIM_THRESHOLD)):
-                survived[idx] = list(new_bbox)
+        survived = {
+            int(label): list(bbox)
+            for label, bbox in zip(surviving_labels, new_bboxes)
+        }
 
         rebuilt = []
         for i, ann in enumerate(coco_manager.annotations):
