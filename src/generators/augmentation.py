@@ -137,19 +137,19 @@ _PIPELINE = [
         hue=(-0.04, 0.04),
         p=0.65,
     ),
-    A.GaussNoise(std_range=(0.03, 0.12), p=0.65),
-    A.ISONoise(color_shift=(0.01, 0.04), intensity=(0.08, 0.33), p=0.40),
+    A.GaussNoise(std_range=(0.02, 0.07), p=0.50),
+    A.ISONoise(color_shift=(0.01, 0.04), intensity=(0.05, 0.18), p=0.30),
     A.RandomShadow(
         shadow_roi=(0.0, 0.0, 1.0, 1.0),
         num_shadows_limit=(1, 2),
-        shadow_intensity_range=(0.08, 0.25),
-        p=0.20,
+        shadow_intensity_range=(0.05, 0.15),
+        p=0.15,
     ),
     A.Perspective(scale=(0.004, 0.02), p=0.50),
     A.OneOf([
         A.GaussianBlur(blur_limit=(3, 3)),
         A.MotionBlur(blur_limit=3),
-    ], p=0.16),
+    ], p=0.08),
     A.ImageCompression(quality_range=(68, 96), p=0.40),
 ]
 
@@ -204,7 +204,7 @@ def apply_photo_augmentation(
     result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
     out_img = Image.fromarray(result["image"])
 
-    if random.random() < 0.60:
+    if random.random() < 0.50:
         out_img = apply_bleed_through(out_img)
 
     if bboxes is None:
