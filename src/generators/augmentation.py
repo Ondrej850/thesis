@@ -77,7 +77,7 @@ _PIPELINE = [
         shadow_intensity_range=(0.08, 0.25),
         p=0.20,
     ),
-    A.Perspective(scale=(0.016, 0.04), p=0.50),
+    A.Perspective(scale=(0.004, 0.02), p=0.50),
     A.OneOf([
         A.GaussianBlur(blur_limit=(3, 3)),
         A.MotionBlur(blur_limit=3),

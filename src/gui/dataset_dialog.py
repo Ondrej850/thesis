@@ -166,6 +166,12 @@ class DatasetDialog(tk.Toplevel):
             row=row, column=1, sticky=tk.W, pady=2)
         row += 1
 
+        ttk.Label(self._inner, text="Number of background images:").grid(row=row, column=0, sticky=tk.W, padx=(20, 5), pady=2)
+        self.num_bg_images_var = tk.IntVar(value=0)
+        ttk.Spinbox(self._inner, from_=0, to=10000, textvariable=self.num_bg_images_var, width=8).grid(
+            row=row, column=1, sticky=tk.W, pady=2)
+        row += 1
+
         self.ignore_empty_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
             self._inner,
@@ -402,6 +408,7 @@ class DatasetDialog(tk.Toplevel):
 
         cfg = DatasetConfig(
             num_images=self.num_images_var.get(),
+            num_background_images=self.num_bg_images_var.get(),
             output_dir=self.output_dir_var.get(),
             annotation_format=self.annotation_fmt_var.get(),
             ignore_empty_papers=self.ignore_empty_var.get(),
@@ -451,12 +458,13 @@ class DatasetDialog(tk.Toplevel):
         ttk.Label(self._inner, text="Generating dataset...",
                   font=("TkDefaultFont", 11, "bold")).grid(row=0, column=0, columnspan=4, padx=20, pady=(20, 10))
 
+        _total_images = config.num_images + config.num_background_images
         self._progress_var = tk.IntVar(value=0)
-        self._progress_bar = ttk.Progressbar(self._inner, maximum=config.num_images,
+        self._progress_bar = ttk.Progressbar(self._inner, maximum=_total_images,
                                               variable=self._progress_var, length=400)
         self._progress_bar.grid(row=1, column=0, columnspan=4, padx=20, pady=5)
 
-        self._progress_label = ttk.Label(self._inner, text=f"0 / {config.num_images}")
+        self._progress_label = ttk.Label(self._inner, text=f"0 / {_total_images}")
         self._progress_label.grid(row=2, column=0, columnspan=4, padx=20, pady=5)
 
         self._cancel_btn = ttk.Button(self._inner, text="Cancel", command=self._on_cancel_generation)
@@ -498,9 +506,9 @@ class DatasetDialog(tk.Toplevel):
         self.destroy()
 
     def _on_done(self, config: DatasetConfig):
-        messagebox.showinfo(
-            "Dataset Complete",
-            f"Generated {config.num_images} images.\n\nOutput: {config.output_dir}",
-            parent=self,
-        )
+        msg = f"Generated {config.num_images} images."
+        if config.num_background_images:
+            msg += f"\nBackground images: {config.num_background_images}."
+        msg += f"\n\nOutput: {config.output_dir}"
+        messagebox.showinfo("Dataset Complete", msg, parent=self)
         self.destroy()

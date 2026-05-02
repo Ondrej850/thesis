@@ -91,6 +91,7 @@ class DatasetGenerator:
         coco_manager = COCOAnnotationManager()
         t0 = time.monotonic()
         saved = 0  # number of non-empty images saved so far
+        total = self.config.num_images + self.config.num_background_images
 
         while saved < self.config.num_images:
             if self._cancelled:
@@ -113,14 +114,28 @@ class DatasetGenerator:
             saved += 1
             elapsed = time.monotonic() - t0
             per_image = elapsed / saved
-            eta = per_image * (self.config.num_images - saved)
+            eta = per_image * (total - saved)
 
             if progress_callback:
-                progress_callback(saved, self.config.num_images, elapsed, eta)
+                progress_callback(saved, total, elapsed, eta)
 
         # Export COCO (single JSON for all images)
         if not self._cancelled and fmt in ("coco", "both"):
             coco_manager.export_coco(os.path.join(annotations_dir, "annotations.json"))
+
+        # Background images — plain augmented paper, no text or annotations.
+        # ignore_empty_papers is intentionally bypassed here.
+        for bg_idx in range(self.config.num_background_images):
+            if self._cancelled:
+                break
+            params = self.config.sample()
+            self._generate_background(bg_idx, params, images_dir)
+            overall = self.config.num_images + bg_idx + 1
+            elapsed = time.monotonic() - t0
+            per_image = elapsed / overall
+            eta = per_image * (total - overall)
+            if progress_callback:
+                progress_callback(overall, total, elapsed, eta)
 
         return self.config.output_dir
 
@@ -381,6 +396,21 @@ class DatasetGenerator:
     def _is_empty(params: dict) -> bool:
         """Return True when sampled params would produce a paper with no cipher content."""
         return not params.get("tables") and not params.get("include_column_pairs", False)
+
+    def _generate_background(self, index: int, params: dict, images_dir: str):
+        """Generate a single background image: aged paper with augmentation, no text or annotations."""
+        paper_config = PaperConfig(
+            aging_level=params["aging_level"],
+            defects=params["defects"],
+        )
+        font_config = FontConfig(
+            font_name="custom", font_size=14, column_separator="none",
+            key_separator="none", dash_count=1, spacing=0, language="latin",
+        )
+        generator = CipherImageGenerator(paper_config, font_config, "low")
+        img = generator.create_aged_paper()
+        img = apply_photo_augmentation(img)
+        img.save(os.path.join(images_dir, f"bg_{index:04d}.png"))
 
     @staticmethod
     def _ann_within_paper(ann: dict, paper_width: int, paper_height: int) -> bool:

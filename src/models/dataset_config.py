@@ -32,6 +32,7 @@ class DatasetConfig:
     """Configuration specifying randomisation ranges for batch dataset generation."""
 
     num_images: int = 10
+    num_background_images: int = 0
     output_dir: str = ""
     annotation_format: str = "both"  # "coco", "yolo", "both"
     ignore_empty_papers: bool = False  # skip images where nothing cipher-related renders
