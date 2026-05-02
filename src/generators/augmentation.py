@@ -86,7 +86,7 @@ _PIPELINE = [
 ]
 
 # Bbox-aware transform: clips bboxes to image bounds, drops any that
-# end up smaller than 4 px² or with <30 % of their area still visible.
+# end up smaller than 4 px² or with <75 % of their area still visible.
 _TRANSFORM = A.Compose(
     _PIPELINE,
     bbox_params=A.BboxParams(
@@ -95,7 +95,7 @@ _TRANSFORM = A.Compose(
         clip=True,
         filter_invalid_bboxes=True,
         min_area=4.0,
-        min_visibility=0.3,
+        min_visibility=0.75,
     ),
 )
 
