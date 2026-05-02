@@ -163,7 +163,7 @@ _TRANSFORM = A.Compose(
         clip=True,
         filter_invalid_bboxes=True,
         min_area=4.0,
-        min_visibility=0.3,
+        min_visibility=0.75,
     ),
 )
 
