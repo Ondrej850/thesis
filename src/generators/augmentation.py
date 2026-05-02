@@ -6,8 +6,37 @@ Path: src/generators/augmentation.py
 import random
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 import albumentations as A
+
+
+def apply_bleed_through(
+    pil_img: Image.Image,
+    intensity: float = 1.0,
+    blur_radius: float | None = None,
+    opacity: float | None = None,
+    back_image: Image.Image | None = None,
+) -> Image.Image:
+    """Simulate ink seen through translucent paper from the reverse side.
+
+    Uses a freshly generated synthetic page as the back-side source so the
+    ghost shows different content from the front.  Pass *back_image* to
+    override with a specific pre-rendered page.
+    """
+    if blur_radius is None:
+        blur_radius = random.uniform(2.0, 5.0)
+    if opacity is None:
+        opacity = random.uniform(0.28, 0.6)
+
+    back = back_image if back_image is not None else _make_back_page(pil_img.size)
+    back = back.convert('RGB').resize(pil_img.size)
+
+    flipped_front = pil_img.convert('RGB').transpose(Image.FLIP_LEFT_RIGHT)
+    combined = Image.blend(flipped_front, back, alpha=0.5)
+    combined = combined.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+
+    alpha = max(0.0, min(1.0, opacity * intensity))
+    return Image.blend(pil_img.convert('RGB'), combined, alpha=alpha)
 
 
 def add_book_edges(image: np.ndarray) -> np.ndarray:
@@ -60,6 +89,45 @@ def _add_vignette(image: np.ndarray, strength: float = 0.5) -> np.ndarray:
     return (image * attenuation[:, :, None]).astype(np.uint8)
 
 
+def _make_back_page(size: tuple) -> Image.Image:
+    """Generate a synthetic cipher-like page to use as bleed-through source.
+
+    Produces aged paper + horizontal strokes in real ink colours so the ghost
+    looks like actual foreign content rather than a mirror of the front page.
+    """
+    w, h = size
+    paper_palette = ['#FAFAF7', '#F7F2E8', '#F2EBD9', '#EDE0C4', '#E8D5B0', '#DFCA9C']
+    img = Image.new('RGB', size, random.choice(paper_palette))
+
+    # Paper grain
+    arr = np.array(img, dtype=np.float32)
+    arr += np.random.normal(0, 5, arr.shape)
+    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+
+    draw = ImageDraw.Draw(img)
+    ink = random.choice([(44, 36, 22), (15, 10, 10), (80, 65, 45), (35, 30, 50)])
+
+    x_start = random.randint(30, 60)
+    y = random.randint(40, 70)
+    line_h = random.randint(18, 28)
+
+    while y < h - 50:
+        if random.random() < 0.88:
+            x = x_start
+            while x < w - 40:
+                seg = random.randint(6, 20)
+                if random.random() < 0.82:
+                    draw.line(
+                        [(x, y), (x + seg, y + random.randint(-1, 1))],
+                        fill=ink,
+                        width=random.randint(1, 2),
+                    )
+                x += seg + random.randint(3, 8)
+        y += line_h + random.randint(-2, 5)
+
+    return img
+
+
 _PIPELINE = [
     A.ToSepia(p=0.40),
     A.ColorJitter(
@@ -86,7 +154,7 @@ _PIPELINE = [
 ]
 
 # Bbox-aware transform: clips bboxes to image bounds, drops any that
-# end up smaller than 4 px² or with <30 % of their area still visible.
+# end up smaller than 4 px² or with <75 % of their area still visible.
 _TRANSFORM = A.Compose(
     _PIPELINE,
     bbox_params=A.BboxParams(
@@ -95,7 +163,7 @@ _TRANSFORM = A.Compose(
         clip=True,
         filter_invalid_bboxes=True,
         min_area=4.0,
-        min_visibility=0.3,
+        min_visibility=0.75,
     ),
 )
 
@@ -111,6 +179,7 @@ def apply_photo_augmentation(
       1. Dark gradient edges (book / scanner shadow)
       2. Optional vignette
       3. Albumentations transforms (aging, noise, blur, perspective, compression)
+      4. Optional bleed-through (ink ghost from reverse side, PIL)
 
     If *bboxes* is provided (list of [x, y, w, h] in COCO format) the
     spatial transforms (Perspective) are applied to the bboxes too.
@@ -134,6 +203,9 @@ def apply_photo_augmentation(
 
     result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
     out_img = Image.fromarray(result["image"])
+
+    if random.random() < 0.60:
+        out_img = apply_bleed_through(out_img)
 
     if bboxes is None:
         return out_img
