@@ -145,7 +145,7 @@ _SENTINEL = np.array([255, 0, 255], dtype=np.uint8)
 _SURFACE_AFFINE = A.Compose(
     [A.Affine(
         scale=(0.80, 0.93),
-        rotate=(-4.0, 4.0),
+        rotate=(-2.0, 2.0),
         translate_percent={"x": (-0.03, 0.03), "y": (-0.03, 0.03)},
         fill=(255, 0, 255),
         fit_output=False,
