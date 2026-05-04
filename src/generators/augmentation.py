@@ -98,19 +98,19 @@ def add_book_edges(image: np.ndarray) -> np.ndarray:
         return (region * g + edge_fill * (1.0 - g)).astype(np.uint8)
 
     if random.random() < 0.3:
-        ew = min(random.randint(20, 80), w)
+        ew = min(random.randint(20, 140), w)
         arr[:, :ew] = _apply(arr[:, :ew], np.linspace(0.0, 1.0, ew), axis=1)
 
     if random.random() < 0.15:
-        ew = min(random.randint(20, 80), w)
+        ew = min(random.randint(20, 140), w)
         arr[:, -ew:] = _apply(arr[:, -ew:], np.linspace(1.0, 0.0, ew), axis=1)
 
     if random.random() < 0.2:
-        ew = min(random.randint(20, 80), h)
+        ew = min(random.randint(20, 140), h)
         arr[:ew, :] = _apply(arr[:ew, :], np.linspace(0.0, 1.0, ew), axis=0)
 
     if random.random() < 0.15:
-        ew = min(random.randint(20, 80), h)
+        ew = min(random.randint(20, 140), h)
         arr[-ew:, :] = _apply(arr[-ew:, :], np.linspace(1.0, 0.0, ew), axis=0)
 
     return arr.astype(np.uint8)
