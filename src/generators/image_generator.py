@@ -207,6 +207,9 @@ class CipherImageGenerator:
         return image_id
 
 
+    # Mapping from user-facing label to pixel gap between each part of a pair
+    _PAIR_SPACING_PX = {"tight": 2, "normal": 6, "high": 15}
+
     def render_cipher_text(self, img: Image.Image, cipher_entries: List[Tuple[str, str]],
                            start_x: int, start_y: int, block_id: int = 0,
                            font_path: Optional[str] = None, use_variations: bool = True,
@@ -214,7 +217,10 @@ class CipherImageGenerator:
                            right_margin: int = 50, bottom_margin: int = 50,
                            ink_color: Optional[Tuple[int, int, int]] = None,
                            pair_format: str = "text_first",
-                           line_spacing_variation: float = 0.0) -> int:
+                           line_spacing_variation: float = 0.0,
+                           pair_spacing: int = 10,
+                           column_gap: int = 30,
+                           column_divider: bool = False) -> int:
         """Render cipher text with keys on image using multi-column layout"""
 
         # Load font path
@@ -225,7 +231,7 @@ class CipherImageGenerator:
             # Multi-column layout configuration
             left_margin = start_x
             top_margin = start_y
-            column_spacing = 30  # Gap between columns
+            column_spacing = column_gap
 
             # Calculate available space
             max_height = self.paper_config.height - bottom_margin
@@ -285,7 +291,7 @@ class CipherImageGenerator:
                     # Add 20 px for the two 10-px inter-part gaps and a 15 % margin for the
                     # character-size / position variations applied during rendering.
                     VARIATION_MARGIN = 1.15
-                    INTER_PART_GAPS = 20
+                    INTER_PART_GAPS = pair_spacing * 2
                     try:
                         measure_font = ImageFont.truetype(font_path, self.font_config.font_size)
                         max_entry_width = VARIATION_MARGIN * max(
@@ -304,6 +310,14 @@ class CipherImageGenerator:
                         print(f"[WARNING] Not enough space for next column: "
                               f"longest entry ~{max_entry_width:.0f}px, have {available_for_next:.0f}px. Stopping.")
                         break
+
+                    # Draw vertical divider line in the gap between columns
+                    if column_divider:
+                        draw = ImageDraw.Draw(img)
+                        divider_x = column_max_x + column_spacing // 2
+                        div_color = ink_color if ink_color else (44, 36, 22)
+                        draw.line([(divider_x, top_margin), (divider_x, max_height)],
+                                  fill=div_color, width=1)
 
                     # Move to next column
                     current_column_x = next_col_x
@@ -335,6 +349,7 @@ class CipherImageGenerator:
                     ink_color=ink_color,
                     pair_format=pair_format,
                     spacing=self.font_config.spacing,
+                    pair_spacing=pair_spacing,
                 )
 
                 # Apply per-line spacing variation if configured

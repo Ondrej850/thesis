@@ -21,6 +21,8 @@ from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
 from src.models.table_codes_config import NULL_SYMBOLS
 
+_PAIR_SPACING_PX = {"tight": 2, "normal": 6, "high": 15}
+
 # Ink colour lookup (same as main_window.py)
 INK_COLOR_MAP = {
     "dark_brown":  (44, 36, 22),
@@ -319,6 +321,9 @@ class DatasetGenerator:
                     ink_color=ink_color,
                     pair_format=params.get("pair_format", "text_first"),
                     line_spacing_variation=float(params.get("line_spacing_jitter", 0)),
+                    pair_spacing=_PAIR_SPACING_PX.get(params.get("pair_spacing", "normal"), 6),
+                    column_gap=params.get("column_gap", 30),
+                    column_divider=params.get("column_divider", False),
                 )
                 # Transfer column-pairs annotations (within-paper only)
                 for ann in generator.coco_manager.annotations:

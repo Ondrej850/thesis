@@ -78,6 +78,11 @@ class DatasetConfig:
     table_pair_grid: str = "never"
     include_table_title: str = "never"
 
+    # Column pairs — new layout controls
+    pair_spacings: List[str] = field(default_factory=lambda: ["tight", "normal", "high"])
+    column_divider: str = "random"       # "always", "never", "random"
+    column_gap_range: Tuple[int, int] = (20, 50)
+
     # Column pairs section title
     include_cp_title: str = "never"      # "always", "never", "random"
 
@@ -193,6 +198,9 @@ class DatasetConfig:
             "num_entries": random.randint(*self.num_entries_range),
             "cp_font_size": random.randint(*self.cp_font_size_range),
             "include_cp_title": self._resolve_toggle(self.include_cp_title),
+            "pair_spacing": random.choice(self.pair_spacings),
+            "column_divider": self._resolve_toggle(self.column_divider),
+            "column_gap": random.randint(*self.column_gap_range),
 
             # Font
             "font_name": random.choice(self.fonts),

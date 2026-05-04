@@ -413,6 +413,35 @@ class CipherGeneratorGUI:
         )
         self._cp_spacing_spinbox.grid(row=10, column=1, sticky=tk.W, pady=2)
 
+        # Key-cipher spacing
+        self._cp_label_pair_spacing = ttk.Label(frame, text="Key-Cipher Spacing:")
+        self._cp_label_pair_spacing.grid(row=11, column=0, sticky=tk.W, pady=2)
+        self.pair_spacing_var = tk.StringVar(value="normal")
+        self._cp_pair_spacing_combo = ttk.Combobox(
+            frame, textvariable=self.pair_spacing_var,
+            values=["tight", "normal", "high"], state="readonly", width=25,
+        )
+        self._cp_pair_spacing_combo.grid(row=11, column=1, sticky=(tk.W, tk.E), pady=2)
+
+        # Line between columns
+        self.column_divider_var = tk.BooleanVar(value=False)
+        self._cp_divider_check = ttk.Checkbutton(
+            frame,
+            text="Line between columns",
+            variable=self.column_divider_var,
+            command=self._on_visual_config_change,
+        )
+        self._cp_divider_check.grid(row=12, column=0, columnspan=2, sticky=tk.W, pady=2)
+
+        # Column gap
+        self._cp_label_col_gap = ttk.Label(frame, text="Column Gap (px):")
+        self._cp_label_col_gap.grid(row=13, column=0, sticky=tk.W, pady=2)
+        self.column_gap_var = tk.IntVar(value=30)
+        self._cp_col_gap_spinbox = ttk.Spinbox(
+            frame, from_=5, to=150, textvariable=self.column_gap_var, width=10,
+        )
+        self._cp_col_gap_spinbox.grid(row=13, column=1, sticky=tk.W, pady=2)
+
         # Section title
         self.cp_section_title_var = tk.BooleanVar(value=False)
         self._cp_title_check = ttk.Checkbutton(
@@ -421,15 +450,15 @@ class CipherGeneratorGUI:
             variable=self.cp_section_title_var,
             command=self._on_cp_section_title_toggle,
         )
-        self._cp_title_check.grid(row=11, column=0, columnspan=3, sticky=tk.W, pady=(6, 0))
+        self._cp_title_check.grid(row=14, column=0, columnspan=3, sticky=tk.W, pady=(6, 0))
 
         self.cp_section_title_text = tk.StringVar(value="")
         self._cp_title_entry = ttk.Entry(frame, textvariable=self.cp_section_title_text, width=22)
-        self._cp_title_entry.grid(row=12, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
+        self._cp_title_entry.grid(row=15, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=2, padx=(16, 2))
         ttk.Label(
             frame, text="(empty = random)",
             font=("TkDefaultFont", 8), foreground="gray",
-        ).grid(row=12, column=2, sticky=tk.W)
+        ).grid(row=15, column=2, sticky=tk.W)
 
         self._cp_title_random_btn = ttk.Button(
             frame, text="Random",
@@ -438,7 +467,7 @@ class CipherGeneratorGUI:
             ),
             width=8,
         )
-        self._cp_title_random_btn.grid(row=12, column=3, sticky=tk.W, padx=4, pady=2)
+        self._cp_title_random_btn.grid(row=15, column=3, sticky=tk.W, padx=4, pady=2)
 
         # Sync enabled/disabled states on startup
         self._on_cp_section_title_toggle()
@@ -458,6 +487,9 @@ class CipherGeneratorGUI:
         self._cp_key_sep_combo.configure(state=state)
         self._cp_dash_count_spinbox.configure(state=spin_state)
         self._cp_spacing_spinbox.configure(state=spin_state)
+        self._cp_pair_spacing_combo.configure(state=state)
+        self._cp_divider_check.configure(state="normal" if enabled else "disabled")
+        self._cp_col_gap_spinbox.configure(state=spin_state)
         self._cp_title_check.configure(state="normal" if enabled else "disabled")
         if enabled:
             self._on_cp_section_title_toggle()
@@ -968,6 +1000,9 @@ class CipherGeneratorGUI:
         self.key_sep_var.trace_add('write', self._on_visual_config_change)
         self.dash_count_var.trace_add('write', self._on_visual_config_change)
         self.spacing_var.trace_add('write', self._on_visual_config_change)
+        self.pair_spacing_var.trace_add('write', self._on_visual_config_change)
+        self.column_gap_var.trace_add('write', self._on_visual_config_change)
+        self.column_divider_var.trace_add('write', self._on_visual_config_change)
 
         # Include-section toggles (visual — just re-render, caches are fine)
         self.include_column_pairs_var.trace_add('write', self._on_visual_config_change)
@@ -1211,6 +1246,7 @@ class CipherGeneratorGUI:
                         bottom_margin=bottom_margin,
                     )
                 cipher_entries = self._get_cipher_entries()
+                _spacing_map = {"tight": 2, "normal": 6, "high": 15}
                 generator.render_cipher_text(
                     img, cipher_entries, start_x, current_y,
                     block_id=1,
@@ -1222,6 +1258,9 @@ class CipherGeneratorGUI:
                     ink_color=ink_color,
                     pair_format=pair_format,
                     line_spacing_variation=float(line_spacing_jitter),
+                    pair_spacing=_spacing_map.get(self.pair_spacing_var.get(), 6),
+                    column_gap=self.column_gap_var.get(),
+                    column_divider=self.column_divider_var.get(),
                 )
 
             # Store for saving — augment image and update annotations together

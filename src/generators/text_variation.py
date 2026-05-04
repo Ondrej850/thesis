@@ -580,7 +580,8 @@ class CipherEntryRenderer:
                             max_column_width: int = 300,
                             ink_color: tuple = None,
                             pair_format: str = "text_first",
-                            spacing: int = 0) -> float:
+                            spacing: int = 0,
+                            pair_spacing: int = 10) -> float:
         """
         Render a cipher entry (text + separator + key) with variations
 
@@ -611,14 +612,14 @@ class CipherEntryRenderer:
         )
 
         # Render separator (don't track)
-        sep_x = end_x + 10
+        sep_x = end_x + pair_spacing
         sep_end_x, _ = self._text_renderer.render_varied_text(
             img, separator, sep_x, y, font_path, base_size, base_color, False,
             x_limit=right_limit
         )
 
         # Render right part and track its bbox AS A SEPARATE ELEMENT
-        key_x = sep_end_x + 10
+        key_x = sep_end_x + pair_spacing
         key_end_x, _ = self._text_renderer.render_varied_text(
             img, right_text, key_x, y, font_path, base_size, base_color, track_annotations,
             x_limit=right_limit
