@@ -190,7 +190,7 @@ def add_surface_capture(image: np.ndarray, bboxes=None, labels=None):
     ]
     bg_color = random.choice(bg_presets)
 
-    scale = random.uniform(0.80, 0.93)
+    scale = random.uniform(0.88, 0.95)
     new_w = int(w * scale)
     new_h = int(h * scale)
 
