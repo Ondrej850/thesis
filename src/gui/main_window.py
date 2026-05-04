@@ -126,10 +126,6 @@ class CipherGeneratorGUI:
         self.db = DatabaseManager()
         self.font_manager = FontManager()
 
-        # Initialize font database
-        if self.font_manager.has_fonts():
-            self.font_manager.add_font_to_database(self.db)
-
         self.preview_image = None
         self.current_generator = None  # Store generator instance
 
@@ -1228,10 +1224,6 @@ class CipherGeneratorGUI:
                     line_spacing_variation=float(line_spacing_jitter),
                 )
 
-            # Mark font as used (for statistics)
-            if selected_font_path:
-                self.font_manager.mark_font_used(selected_font_path, self.db)
-
             # Store for saving — augment image and update annotations together
             img = self._augment_with_annotations(img, generator)
             self.preview_image = img
@@ -1657,20 +1649,9 @@ Annotations by Category:
                               "No custom fonts loaded.\n\nAdd .ttf or .otf files to 'fonts/handwritten' directory.")
             return
 
-        stats = self.font_manager.get_font_stats(self.db)
-
-        if not stats:
-            message = f"Available Fonts: {len(self.font_manager.available_fonts)}\n\n"
-            message += "Fonts not yet used:\n"
-            for font_name in self.font_manager.get_all_font_names():
-                message += f"  • {font_name}\n"
-        else:
-            message = "Font Usage Statistics:\n\n"
-            for stat in stats:
-                last_used = stat['last_used'] if stat['last_used'] else 'Never'
-                message += f"• {stat['name']}\n"
-                message += f"  Times used: {stat['times_used']}\n"
-                message += f"  Last used: {last_used}\n\n"
+        message = f"Available Fonts: {len(self.font_manager.available_fonts)}\n\n"
+        for font_name in self.font_manager.get_all_font_names():
+            message += f"  • {font_name}\n"
 
         messagebox.showinfo("Font Statistics", message)
 
