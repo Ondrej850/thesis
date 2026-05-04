@@ -128,6 +128,39 @@ def _add_vignette(image: np.ndarray, strength: float = 0.5) -> np.ndarray:
     return (image * attenuation[:, :, None]).astype(np.uint8)
 
 
+_BG_PRESETS = [
+    (252, 252, 250),  # near-white
+    (240, 238, 235),  # off-white
+    (210, 208, 205),  # light grey
+    (160, 158, 155),  # mid grey
+    (70,  68,  65),   # dark grey
+    (25,  23,  20),   # near-black
+    (8,   8,   8),    # black
+]
+
+# Magenta sentinel: fills areas exposed by the affine transform.
+# Aged-paper documents never produce exact (255, 0, 255) so the mask is reliable.
+_SENTINEL = np.array([255, 0, 255], dtype=np.uint8)
+
+_SURFACE_AFFINE = A.Compose(
+    [A.Affine(
+        scale=(0.80, 0.93),
+        rotate=(-4.0, 4.0),
+        translate_percent={"x": (-0.03, 0.03), "y": (-0.03, 0.03)},
+        fill=(255, 0, 255),
+        fit_output=False,
+        p=1.0,
+    )],
+    bbox_params=A.BboxParams(
+        format="coco",
+        label_fields=["labels"],
+        clip=True,
+        filter_invalid_bboxes=True,
+        min_area=4.0,
+        min_visibility=0.75,
+    ),
+)
+
 _PIPELINE = [
     A.ToSepia(p=0.40),
     A.ColorJitter(
@@ -171,98 +204,53 @@ _TRANSFORM = A.Compose(
 def add_surface_capture(image: np.ndarray, bboxes=None, labels=None):
     """Simulate a document photographed lying on a surface.
 
-    Shrinks and slightly rotates the document, adds a soft drop shadow,
-    and composites it onto a plain background (white, grey, or dark).
-    Bboxes are transformed to match the new geometry.
+    Uses albumentations Affine (via _SURFACE_AFFINE) for all geometric
+    transforms so bbox updating is handled consistently with _TRANSFORM.
+    A magenta sentinel fills the exposed border; those pixels are then
+    replaced with a plain background + soft drop shadow.
     """
-    import math
-
     h, w = image.shape[:2]
+    bg_color = random.choice(_BG_PRESETS)
 
-    bg_presets = [
-        (252, 252, 250),  # near-white
-        (240, 238, 235),  # off-white
-        (210, 208, 205),  # light grey
-        (160, 158, 155),  # mid grey
-        (70,  68,  65),   # dark grey
-        (25,  23,  20),   # near-black
-        (8,   8,   8),    # black
-    ]
-    bg_color = random.choice(bg_presets)
+    bboxes_in = list(bboxes) if bboxes is not None else []
+    labels_in = list(labels) if labels is not None else []
 
-    scale = random.uniform(0.88, 0.95)
-    new_w = int(w * scale)
-    new_h = int(h * scale)
+    result = _SURFACE_AFFINE(image=image, bboxes=bboxes_in, labels=labels_in)
+    transformed = result["image"].copy()
 
-    pil_doc = Image.fromarray(image).resize((new_w, new_h), Image.LANCZOS)
+    # Pixels the affine filled with the sentinel → these are the background areas
+    bg_mask = np.all(transformed == _SENTINEL, axis=2)
 
-    angle = random.uniform(-4.0, 4.0)
-    # fillcolor fills the exposed corners of the expanded canvas with background
-    pil_rot = pil_doc.rotate(angle, expand=True, resample=Image.BICUBIC,
-                              fillcolor=bg_color)
-    rw, rh = pil_rot.size
+    # Build background canvas + drop shadow
+    bg = np.full((h, w, 3), bg_color, dtype=np.uint8)
+    doc_pix = ~bg_mask
+    if doc_pix.any():
+        rows = np.where(doc_pix.any(axis=1))[0]
+        cols = np.where(doc_pix.any(axis=0))[0]
+        x1, x2 = int(cols[0]), int(cols[-1])
+        y1, y2 = int(rows[0]), int(rows[-1])
 
-    bg = Image.new("RGB", (w, h), bg_color)
+        shadow_off  = random.randint(6, 18)
+        shadow_blur = random.randint(10, 24)
+        shadow_a    = random.randint(60, 130)
+        shadow_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow_layer).rectangle(
+            [x1 + shadow_off, y1 + shadow_off, x2 + shadow_off, y2 + shadow_off],
+            fill=(0, 0, 0, shadow_a),
+        )
+        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(shadow_blur))
+        bg = np.array(
+            Image.alpha_composite(
+                Image.fromarray(bg).convert("RGBA"), shadow_layer
+            ).convert("RGB")
+        )
 
-    max_ox = max(0, w - rw)
-    max_oy = max(0, h - rh)
-    ox = random.randint(0, max_ox) if max_ox > 0 else 0
-    oy = random.randint(0, max_oy) if max_oy > 0 else 0
-
-    # Soft drop shadow
-    shadow_off = random.randint(6, 18)
-    shadow_blur = random.randint(10, 24)
-    shadow_alpha = random.randint(60, 130)
-    shadow_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    ImageDraw.Draw(shadow_layer).rectangle(
-        [ox + shadow_off, oy + shadow_off,
-         ox + rw + shadow_off - 1, oy + rh + shadow_off - 1],
-        fill=(0, 0, 0, shadow_alpha),
-    )
-    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(shadow_blur))
-    bg = Image.alpha_composite(bg.convert("RGBA"), shadow_layer).convert("RGB")
-
-    bg.paste(pil_rot, (ox, oy))
-    result = np.array(bg)
+    # Replace sentinel pixels with background (shadow included where applicable)
+    transformed[bg_mask] = bg[bg_mask]
 
     if bboxes is None:
-        return result
-
-    # Transform bboxes: scale → rotate (CCW by angle) → translate by (ox, oy)
-    rad = math.radians(angle)
-    cos_a, sin_a = math.cos(rad), math.sin(rad)
-    cx, cy = new_w / 2.0, new_h / 2.0    # centre of scaled doc
-    rcx, rcy = rw / 2.0, rh / 2.0        # centre of rotated canvas
-
-    out_bboxes, out_labels = [], []
-    for bbox, lbl in zip(bboxes, labels):
-        bx, by, bw, bh = bbox
-        bx_s, by_s, bw_s, bh_s = bx * scale, by * scale, bw * scale, bh * scale
-
-        corners = [
-            (bx_s,        by_s),
-            (bx_s + bw_s, by_s),
-            (bx_s + bw_s, by_s + bh_s),
-            (bx_s,        by_s + bh_s),
-        ]
-        rotated = []
-        for px, py in corners:
-            dx, dy = px - cx, py - cy
-            rotated.append((cos_a * dx - sin_a * dy + rcx + ox,
-                             sin_a * dx + cos_a * dy + rcy + oy))
-
-        xs = [p[0] for p in rotated]
-        ys = [p[1] for p in rotated]
-        nx = max(0.0, min(xs))
-        ny = max(0.0, min(ys))
-        nw = min(max(xs) - nx, w - nx)
-        nh = min(max(ys) - ny, h - ny)
-
-        if nw > 2 and nh > 2:
-            out_bboxes.append([nx, ny, nw, nh])
-            out_labels.append(lbl)
-
-    return result, out_bboxes, out_labels
+        return transformed
+    return transformed, list(result["bboxes"]), list(result["labels"])
 
 
 def apply_photo_augmentation(
