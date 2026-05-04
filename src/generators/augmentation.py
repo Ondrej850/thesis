@@ -137,8 +137,8 @@ _PIPELINE = [
         hue=(-0.04, 0.04),
         p=0.65,
     ),
-    A.GaussNoise(std_range=(0.02, 0.07), p=0.50),
-    A.ISONoise(color_shift=(0.01, 0.04), intensity=(0.05, 0.18), p=0.30),
+    A.GaussNoise(std_range=(0.01, 0.04), p=0.50),
+    A.ISONoise(color_shift=(0.01, 0.03), intensity=(0.03, 0.10), p=0.30),
     A.RandomShadow(
         shadow_roi=(0.0, 0.0, 1.0, 1.0),
         num_shadows_limit=(1, 2),
@@ -149,8 +149,8 @@ _PIPELINE = [
     A.OneOf([
         A.GaussianBlur(blur_limit=(3, 3)),
         A.MotionBlur(blur_limit=3),
-    ], p=0.08),
-    A.ImageCompression(quality_range=(68, 96), p=0.40),
+    ], p=0.04),
+    A.ImageCompression(quality_range=(82, 97), p=0.40),
 ]
 
 # Bbox-aware transform: clips bboxes to image bounds, drops any that
