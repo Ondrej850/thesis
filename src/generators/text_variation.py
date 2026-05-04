@@ -579,7 +579,8 @@ class CipherEntryRenderer:
                             track_annotations: bool = False,
                             max_column_width: int = 300,
                             ink_color: tuple = None,
-                            pair_format: str = "text_first") -> float:
+                            pair_format: str = "text_first",
+                            spacing: int = 0) -> float:
         """
         Render a cipher entry (text + separator + key) with variations
 
@@ -650,8 +651,8 @@ class CipherEntryRenderer:
                 if pair_bbox.is_valid():
                     self._text_renderer.collected_pair_bboxes.append(pair_bbox)
 
-        # Calculate next line position
-        line_height = base_size + self._text_renderer.variation_settings["position_y"] * 3
+        # Calculate next line position (base font size + user spacing + variation headroom)
+        line_height = base_size + spacing + self._text_renderer.variation_settings["position_y"] * 3
         next_y = y + self._text_renderer.get_varied_spacing(line_height)
 
         # Draw row separator if needed

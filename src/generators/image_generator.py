@@ -334,6 +334,7 @@ class CipherImageGenerator:
                     max_column_width=available_width,
                     ink_color=ink_color,
                     pair_format=pair_format,
+                    spacing=self.font_config.spacing,
                 )
 
                 # Apply per-line spacing variation if configured
