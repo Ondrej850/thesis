@@ -24,9 +24,9 @@ def apply_bleed_through(
     override with a specific pre-rendered page.
     """
     if blur_radius is None:
-        blur_radius = random.uniform(2.0, 5.0)
+        blur_radius = random.uniform(1.5, 4.0)
     if opacity is None:
-        opacity = random.uniform(0.28, 0.6)
+        opacity = random.uniform(0.40, 0.75)
 
     back = back_image if back_image is not None else _make_back_page(pil_img.size)
     back = back.convert('RGB').resize(pil_img.size)
