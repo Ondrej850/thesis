@@ -4,8 +4,9 @@ Path: src/database/database_manager.py
 """
 
 import random
-from copy import deepcopy
 from typing import Dict, List, Tuple
+
+from src.models.table_codes_config import NULL_SYMBOLS
 
 # ---------------------------------------------------------------------------
 # Seed data — all word lists defined as module-level constants
@@ -35,15 +36,6 @@ _DICTIONARY_WORDS: List[str] = [
     "Papal States", "Council of Trent", "Peace Treaty",
 ]
 
-_NULLS_WORDS: List[str] = [
-    # Basic Latin
-    '!', '#', '$', '%', '&', '*', '+', '=', '?', '@',
-    '^', '~', '{', '}', '[', ']', '|', '/', '<', '>',
-    # Latin-1 Supplement
-    '¡', '¢', '£', '¤', '¥', '¦', '§', '©', '®', '°',
-    '±', '²', '³', 'µ', '¶', '·', '¼', '½', '¾', '¿',
-    '×', '÷',
-]
 
 _TABLE_CODES_WORDS: List[str] = [
     # 3-4 letters
@@ -184,7 +176,7 @@ class DatabaseManager:
             "bigram":       list(_BIGRAM_WORDS),
             "trigram":      list(_TRIGRAM_WORDS),
             "dictionary":   list(_DICTIONARY_WORDS),
-            "nulls":        list(_NULLS_WORDS),
+            "nulls":        list(NULL_SYMBOLS),
             "table_codes":  list(_TABLE_CODES_WORDS),
         }
         self._paper_types: List[Tuple] = list(_PAPER_TYPES)

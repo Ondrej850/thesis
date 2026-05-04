@@ -19,6 +19,7 @@ from src.generators.table_codes_generator import TableCodesGenerator
 from src.generators.augmentation import apply_photo_augmentation
 from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
+from src.models.table_codes_config import NULL_SYMBOLS
 
 # Ink colour lookup (same as main_window.py)
 INK_COLOR_MAP = {
@@ -441,6 +442,8 @@ class DatasetGenerator:
             if key_type == "double_char":
                 unique_keys = self._generate_unique_double_char_keys(len(letters))
                 return list(zip(letters, unique_keys))
+            if key_type == "special_character":
+                return [(l, random.choice(NULL_SYMBOLS)) for l in letters]
             return [(l, str(_generate_key_number(cipher_type))) for l in letters]
 
         words = self.db.get_cipher_keys(cipher_type)
@@ -452,6 +455,6 @@ class DatasetGenerator:
         entries = []
         for _ in range(num_entries):
             word = random.choice(words)
-            key_val = str(_generate_key_number(cipher_type))
+            key_val = random.choice(NULL_SYMBOLS) if key_type == "special_character" else str(_generate_key_number(cipher_type))
             entries.append((word, key_val))
         return entries

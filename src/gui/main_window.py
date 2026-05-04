@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
 from src.models.cipher_type import CipherType
-from src.models.table_codes_config import TableCodesConfig
+from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
 from src.generators.augmentation import apply_photo_augmentation
@@ -1423,10 +1423,12 @@ class CipherGeneratorGUI:
         """Generate a random key value based on cipher type and key type.
 
         key_type:
-            'number'            – multi-digit number (existing behaviour)
+            'number'            – multi-digit number
             'double_char'       – two-character key (unique pool managed by caller)
-            'special_character' – kept for backwards compat (same as number)
+            'special_character' – random symbol from NULL_SYMBOLS
         """
+        if key_type == "special_character":
+            return random.choice(NULL_SYMBOLS)
         # double_char is handled at the batch level (_get_cipher_entries)
         return str(self._generate_key_number(cipher_type))
 
