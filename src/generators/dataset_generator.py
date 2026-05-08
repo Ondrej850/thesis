@@ -9,6 +9,7 @@ import random
 import time
 from typing import Callable, Optional
 
+from PIL import Image
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
 from src.models.table_codes_config import TableCodesConfig
@@ -528,6 +529,7 @@ class DatasetGenerator:
 
         back_params = self.config.sample()
         back_image = self._render_content_image(back_params)
+        back_image = back_image.transpose(Image.FLIP_LEFT_RIGHT)
 
         img = apply_photo_augmentation(img, back_image=back_image)
         img.save(os.path.join(images_dir, f"bg_{index:04d}.png"))
