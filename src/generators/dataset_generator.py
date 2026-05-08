@@ -403,6 +403,116 @@ class DatasetGenerator:
         """Return True when sampled params would produce a paper with no cipher content."""
         return not params.get("tables") and not params.get("include_column_pairs", False)
 
+    def _render_content_image(self, params: dict):
+        """Render a full cipher content image and return it without saving or tracking annotations.
+
+        Used as a realistic back-page source for the bleed-through effect on background images,
+        so the ghost looks like actual cipher content rather than synthetic ink strokes.
+        """
+        paper_config = PaperConfig(
+            aging_level=params["aging_level"],
+            defects=params["defects"],
+        )
+        font_config = FontConfig(
+            font_name="custom",
+            font_size=params["cp_font_size"],
+            column_separator=params["col_separator"],
+            key_separator=params["key_separator"],
+            dash_count=params["dash_count"],
+            spacing=params["spacing"],
+            language="latin",
+        )
+        variation_level = params["variation_level"]
+        use_variations = variation_level != "none"
+        generator = CipherImageGenerator(paper_config, font_config, variation_level)
+        img = generator.create_aged_paper()
+
+        font_path = self._resolve_font(params["font_name"])
+        ink_color = INK_COLOR_MAP.get(params["ink_color"], (44, 36, 22))
+        current_y = params["start_y"]
+        bottom_limit = paper_config.height - params.get("bottom_margin", 50)
+        right_margin = params.get("right_margin", 50)
+        bottom_margin = params.get("bottom_margin", 50)
+
+        if params.get("include_title", False) and current_y < bottom_limit:
+            current_y = generator.render_title(
+                img, params["start_x"], current_y,
+                font_path=font_path,
+                use_variations=use_variations,
+                track_annotations=False,
+                ink_color=ink_color,
+                right_margin=right_margin,
+                bottom_margin=bottom_margin,
+            )
+
+        for table_params in params.get("tables", []):
+            if current_y >= bottom_limit:
+                break
+            _ct = table_params["content_type"]
+            _num_sym = table_params.get("num_symbols", 0)
+            _fetched_words = None
+            if _ct == "words" and _num_sym > 0:
+                _fetched_words = self.db.get_table_words(_num_sym)
+            table_config = TableCodesConfig(
+                content_type=_ct,
+                num_symbols=_num_sym,
+                words=_fetched_words,
+                num_codes=table_params["num_codes"],
+                use_common_boost=table_params["common_boost"],
+                common_codes=table_params["common_codes"],
+                draw_vertical_lines=table_params["vertical_lines"],
+                column_spacing=table_params["col_spacing"],
+                row_spacing=table_params.get("row_spacing", 0),
+                use_pair_grid=table_params.get("pair_grid", False),
+                draw_header_line=table_params.get("draw_header_line", True),
+            )
+            table_gen = TableCodesGenerator(
+                config=table_config,
+                font_size=table_params["font_size"],
+                spacing=params["spacing"],
+                variation_level=variation_level,
+                ink_color=ink_color,
+            )
+            code_table = table_gen.generate_code_table()
+            current_y = table_gen.render_table(
+                img,
+                params["start_x"],
+                current_y,
+                font_path,
+                code_table=code_table,
+                paper_width=paper_config.width,
+                paper_height=paper_config.height,
+                right_margin=right_margin,
+                bottom_margin=bottom_margin,
+                track_annotations=False,
+            )
+            current_y += params["spacing"] * 2
+
+        if params["include_column_pairs"] and current_y < bottom_limit:
+            entries = self._get_cipher_entries(
+                params["cipher_type"], params["key_type"], params["num_entries"]
+            )
+            generator.render_cipher_text(
+                img,
+                entries,
+                params["start_x"],
+                current_y,
+                block_id=1,
+                font_path=font_path,
+                use_variations=use_variations,
+                track_annotations=False,
+                right_margin=params["right_margin"],
+                bottom_margin=params["bottom_margin"],
+                ink_color=ink_color,
+                pair_format=params.get("pair_format", "text_first"),
+                line_spacing_variation=float(params.get("line_spacing_jitter", 0)),
+                pair_spacing=_PAIR_SPACING_PX.get(params.get("pair_spacing", "normal"), 6),
+                column_gap=params.get("column_gap", 30),
+                column_divider=params.get("column_divider", False),
+            )
+
+        return img
+
     def _generate_background(self, index: int, params: dict, images_dir: str):
         """Generate a single background image: aged paper with augmentation, no text or annotations."""
         paper_config = PaperConfig(
@@ -415,7 +525,11 @@ class DatasetGenerator:
         )
         generator = CipherImageGenerator(paper_config, font_config, "low")
         img = generator.create_aged_paper()
-        img = apply_photo_augmentation(img)
+
+        back_params = self.config.sample()
+        back_image = self._render_content_image(back_params)
+
+        img = apply_photo_augmentation(img, back_image=back_image)
         img.save(os.path.join(images_dir, f"bg_{index:04d}.png"))
 
     @staticmethod

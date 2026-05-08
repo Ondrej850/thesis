@@ -257,6 +257,7 @@ def apply_photo_augmentation(
     pil_img: Image.Image,
     bboxes=None,
     labels=None,
+    back_image: Image.Image | None = None,
 ):
     """Apply photo-realistic augmentation to a generated document PIL image.
 
@@ -270,6 +271,9 @@ def apply_photo_augmentation(
     If *bboxes* is provided (list of [x, y, w, h] in COCO format) spatial
     transforms are applied to the bboxes too.  *labels* is a parallel list
     of identifiers so the caller can map surviving bboxes back to annotations.
+
+    Pass *back_image* to supply a pre-rendered page as the bleed-through source
+    instead of the synthetic stroke-based fallback.
 
     Returns:
         Image.Image                       — when bboxes is None
@@ -300,7 +304,7 @@ def apply_photo_augmentation(
     out_labels = list(result["labels"])
 
     if random.random() < 0.50:
-        out_img = apply_bleed_through(out_img)
+        out_img = apply_bleed_through(out_img, back_image=back_image)
 
     if bboxes is None:
         return out_img
