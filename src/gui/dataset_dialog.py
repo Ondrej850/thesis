@@ -224,6 +224,10 @@ class DatasetDialog(tk.Toplevel):
         self._dash_lo, self._dash_hi, row = self._add_range(row, "Dash Count:", 1, 10, 1, 5)
         self._spacing_lo, self._spacing_hi, row = self._add_range(row, "Line Spacing:", 5, 20, 5, 12)
         self._jitter_lo, self._jitter_hi, row = self._add_range(row, "Line Spacing Jitter:", 0, 20, 0, 8)
+        self._pair_spacing_vars, row = self._add_checkboxes(
+            row, "Key-Cipher Spacing:", ["tight", "normal", "high"], defaults=["tight", "normal", "high"])
+        self._col_divider_toggle, row = self._add_toggle(row, "Column Divider:", "random")
+        self._col_gap_lo, self._col_gap_hi, row = self._add_range(row, "Column Gap (px):", 5, 150, 20, 50)
         self._cp_title_toggle, row = self._add_toggle(row, "Section Title:", "never")
         return row
 
@@ -423,6 +427,9 @@ class DatasetDialog(tk.Toplevel):
             num_entries_range=(self._entries_lo.get(), self._entries_hi.get()),
             cp_font_size_range=(self._cp_fs_lo.get(), self._cp_fs_hi.get()),
             include_cp_title=self._cp_title_toggle.get(),
+            pair_spacings=self._checked(self._pair_spacing_vars) or ["normal"],
+            column_divider=self._col_divider_toggle.get(),
+            column_gap_range=(self._col_gap_lo.get(), self._col_gap_hi.get()),
             # Font
             fonts=self._checked(self._font_vars) or ["Random"],
             variation_levels=self._checked(self._var_level_vars) or ["medium"],
