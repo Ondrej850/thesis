@@ -484,7 +484,7 @@ class CipherImageGenerator:
         elif self.font_config.key_separator == 'dashes':
             return " " + "—" * self.font_config.dash_count + " "
         else:
-            return "    "
+            return ""
 
     def _draw_column_separator(self, draw, x, y, width):
         """Draw column separator line"""

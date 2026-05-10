@@ -19,63 +19,23 @@ def apply_bleed_through(
 ) -> Image.Image:
     """Simulate ink seen through translucent paper from the reverse side.
 
-    Uses a freshly generated synthetic page as the back-side source so the
-    ghost shows different content from the front.  Pass *back_image* to
-    override with a specific pre-rendered page.
+    For normal images (no back_image) the front page itself is flipped to
+    produce the ghost.  Pass a pre-rendered, pre-flipped page as back_image
+    to use real content instead (used by background image generation).
     """
     if blur_radius is None:
         blur_radius = random.uniform(1.5, 4.0)
     if opacity is None:
         opacity = random.uniform(0.40, 0.75)
 
-    back = back_image if back_image is not None else _make_back_page(pil_img.size)
-    back = back.convert('RGB').resize(pil_img.size)
+    if back_image is not None:
+        source = back_image.convert('RGB').resize(pil_img.size)
+    else:
+        source = pil_img.convert('RGB').transpose(Image.FLIP_LEFT_RIGHT)
 
-    flipped_front = pil_img.convert('RGB').transpose(Image.FLIP_LEFT_RIGHT)
-    combined = Image.blend(flipped_front, back, alpha=0.5)
-    combined = combined.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-
+    combined = source.filter(ImageFilter.GaussianBlur(radius=blur_radius))
     alpha = max(0.0, min(1.0, opacity * intensity))
     return Image.blend(pil_img.convert('RGB'), combined, alpha=alpha)
-
-
-def _make_back_page(size: tuple) -> Image.Image:
-    """Generate a synthetic cipher-like page to use as bleed-through source.
-
-    Produces aged paper + horizontal strokes in real ink colours so the ghost
-    looks like actual foreign content rather than a mirror of the front page.
-    """
-    w, h = size
-    paper_palette = ['#FAFAF7', '#F7F2E8', '#F2EBD9', '#EDE0C4', '#E8D5B0', '#DFCA9C']
-    img = Image.new('RGB', size, random.choice(paper_palette))
-
-    # Paper grain
-    arr = np.array(img, dtype=np.float32)
-    arr += np.random.normal(0, 5, arr.shape)
-    img = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
-
-    draw = ImageDraw.Draw(img)
-    ink = random.choice([(44, 36, 22), (15, 10, 10), (80, 65, 45), (35, 30, 50)])
-
-    x_start = random.randint(30, 60)
-    y = random.randint(40, 70)
-    line_h = random.randint(18, 28)
-
-    while y < h - 50:
-        if random.random() < 0.88:
-            x = x_start
-            while x < w - 40:
-                seg = random.randint(6, 20)
-                if random.random() < 0.82:
-                    draw.line(
-                        [(x, y), (x + seg, y + random.randint(-1, 1))],
-                        fill=ink,
-                        width=random.randint(1, 2),
-                    )
-                x += seg + random.randint(3, 8)
-        y += line_h + random.randint(-2, 5)
-
-    return img
 
 
 def add_book_edges(image: np.ndarray) -> np.ndarray:
@@ -257,6 +217,7 @@ def apply_photo_augmentation(
     pil_img: Image.Image,
     bboxes=None,
     labels=None,
+    back_image: Image.Image | None = None,
 ):
     """Apply photo-realistic augmentation to a generated document PIL image.
 
@@ -270,6 +231,9 @@ def apply_photo_augmentation(
     If *bboxes* is provided (list of [x, y, w, h] in COCO format) spatial
     transforms are applied to the bboxes too.  *labels* is a parallel list
     of identifiers so the caller can map surviving bboxes back to annotations.
+
+    Pass *back_image* to supply a pre-rendered page as the bleed-through source
+    instead of the synthetic stroke-based fallback.
 
     Returns:
         Image.Image                       — when bboxes is None
@@ -300,7 +264,7 @@ def apply_photo_augmentation(
     out_labels = list(result["labels"])
 
     if random.random() < 0.50:
-        out_img = apply_bleed_through(out_img)
+        out_img = apply_bleed_through(out_img, back_image=back_image)
 
     if bboxes is None:
         return out_img
