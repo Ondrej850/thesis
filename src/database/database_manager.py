@@ -1,15 +1,14 @@
 """
-In-memory data store for cipher data (replaces SQLite database).
-Path: src/database/database_manager.py
+In-memory data store for cipher data.
 """
 
 import random
-from typing import Dict, List, Tuple
+from typing import List
 
 from src.models.table_codes_config import NULL_SYMBOLS
 
 # ---------------------------------------------------------------------------
-# Seed data — all word lists defined as module-level constants
+# Seed data
 # ---------------------------------------------------------------------------
 
 _SUBSTITUTION_WORDS: List[str] = [
@@ -35,7 +34,6 @@ _DICTIONARY_WORDS: List[str] = [
     "Holy Roman Empire", "grace of God", "Imperial Diet",
     "Papal States", "Council of Trent", "Peace Treaty",
 ]
-
 
 _TABLE_CODES_WORDS: List[str] = [
     # 3-4 letters
@@ -150,79 +148,27 @@ _TABLE_CODES_WORDS: List[str] = [
     "warrant", "warlord", "weapons", "worship", "writers",
 ]
 
-_PAPER_TYPES: List[Tuple] = [
-    (1, "Parchment Light",  "#F4E8D0", "fine"),
-    (2, "Parchment Medium", "#E8D5B7", "medium"),
-    (3, "Parchment Dark",   "#D4C4A8", "coarse"),
-    (4, "Aged Paper",       "#E8DCC8", "aged"),
-]
-
-# Mapping from cipher_type string to internal key
-_CIPHER_KEY_MAP: Dict[str, str] = {
-    "substitution": "substitution",
-    "bigram":       "bigram",
-    "trigram":      "trigram",
-    "dictionary":   "dictionary",
-    "nulls":        "nulls",
+_WORD_LISTS = {
+    "substitution": _SUBSTITUTION_WORDS,
+    "bigram":       _BIGRAM_WORDS,
+    "trigram":      _TRIGRAM_WORDS,
+    "dictionary":   _DICTIONARY_WORDS,
+    "nulls":        list(NULL_SYMBOLS),
+    "table_codes":  _TABLE_CODES_WORDS,
 }
 
 
 class DatabaseManager:
-    """In-memory data store for cipher word lists and paper type presets."""
+    """In-memory data store for cipher word lists."""
 
     def __init__(self):
-        self._data: Dict[str, List[str]] = {
-            "substitution": list(_SUBSTITUTION_WORDS),
-            "bigram":       list(_BIGRAM_WORDS),
-            "trigram":      list(_TRIGRAM_WORDS),
-            "dictionary":   list(_DICTIONARY_WORDS),
-            "nulls":        list(NULL_SYMBOLS),
-            "table_codes":  list(_TABLE_CODES_WORDS),
-        }
-        self._paper_types: List[Tuple] = list(_PAPER_TYPES)
-
-    # ------------------------------------------------------------------
-    # Read operations
-    # ------------------------------------------------------------------
+        self._data = {k: list(v) for k, v in _WORD_LISTS.items()}
 
     def get_cipher_keys(self, cipher_type: str) -> List[str]:
         """Return all words for the given cipher type."""
-        key = _CIPHER_KEY_MAP.get(cipher_type)
-        if key is None:
-            return []
-        return list(self._data[key])
+        return list(self._data.get(cipher_type, []))
 
     def get_table_words(self, n: int) -> List[str]:
         """Return n randomly sampled words from the table-codes word pool."""
         pool = self._data["table_codes"]
         return random.sample(pool, min(n, len(pool)))
-
-    def get_paper_types(self) -> List[Tuple]:
-        """Return all paper type presets."""
-        return list(self._paper_types)
-
-    def get_stats(self) -> dict:
-        """Return word count per cipher type (excludes table_codes)."""
-        return {k: len(v) for k, v in self._data.items() if k != "table_codes"}
-
-    # ------------------------------------------------------------------
-    # Write operations (in-memory only; changes last for the session)
-    # ------------------------------------------------------------------
-
-    def add_word(self, cipher_type: str, word: str):
-        """Add a word to the given cipher type's list (no-op if already present)."""
-        key = _CIPHER_KEY_MAP.get(cipher_type)
-        if key is None:
-            return
-        if word not in self._data[key]:
-            self._data[key].append(word)
-
-    def remove_word(self, cipher_type: str, word: str):
-        """Remove a word from the given cipher type's list."""
-        key = _CIPHER_KEY_MAP.get(cipher_type)
-        if key is None:
-            return
-        try:
-            self._data[key].remove(word)
-        except ValueError:
-            pass

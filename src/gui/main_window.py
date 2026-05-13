@@ -10,15 +10,10 @@ import random
 import os
 import threading
 from typing import List, Tuple
-import sys
-
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
-from src.models.cipher_type import CipherType
 from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
+from src.constants import INK_COLOR_MAP, PAIR_SPACING_PX
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
 from src.generators.augmentation import apply_photo_augmentation
@@ -903,18 +898,6 @@ class CipherGeneratorGUI:
                                            font=("TkDefaultFont", 8), foreground="gray")
         self._ink_swatch_label.grid(row=6, column=2, sticky=tk.W, padx=5)
 
-    # ------------------------------------------------------------------
-    # Ink colour mapping
-    # ------------------------------------------------------------------
-    INK_COLOR_MAP = {
-        "dark_brown":  (44, 36, 22),
-        "black":       (15, 10, 10),
-        "faded_brown": (80, 65, 45),
-        "iron_gall":   (35, 30, 50),
-        "sepia":       (90, 60, 30),
-        "charcoal":    (50, 48, 46),
-    }
-
     def _get_ink_color_rgb(self) -> tuple:
         """Return the (R, G, B) tuple for the currently selected ink colour."""
         return self.INK_COLOR_MAP.get(self.ink_color_var.get(), (44, 36, 22))
@@ -1246,7 +1229,6 @@ class CipherGeneratorGUI:
                         bottom_margin=bottom_margin,
                     )
                 cipher_entries = self._get_cipher_entries()
-                _spacing_map = {"tight": 2, "normal": 6, "high": 15}
                 generator.render_cipher_text(
                     img, cipher_entries, start_x, current_y,
                     block_id=1,
@@ -1258,7 +1240,7 @@ class CipherGeneratorGUI:
                     ink_color=ink_color,
                     pair_format=pair_format,
                     line_spacing_variation=float(line_spacing_jitter),
-                    pair_spacing=_spacing_map.get(self.pair_spacing_var.get(), 6),
+                    pair_spacing=PAIR_SPACING_PX.get(self.pair_spacing_var.get(), 6),
                     column_gap=self.column_gap_var.get(),
                     column_divider=self.column_divider_var.get(),
                 )

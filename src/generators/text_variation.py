@@ -1,491 +1,362 @@
 """
-Text Variation Engine for realistic handwriting effects with COCO annotation support
-Path: src/generators/text_variation.py
+Text variation engine — applies per-character handwriting effects with COCO annotation support.
 """
 
-from PIL import Image, ImageDraw, ImageFont
-import random
-from typing import Tuple, Optional, List
 import math
-import sys
-import os
+import random
+from typing import List, Optional, Tuple
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+from PIL import Image, ImageDraw, ImageFont
 
 from src.models.coco_annotation import BoundingBox, COCOAnnotation
 
 
 class VariatedTextRenderer:
-    """Low-level text renderer that applies realistic variations for handwritten appearance"""
+    """Renders text with realistic handwriting variations (size, position, rotation, ink)."""
+
+    _SETTINGS = {
+        "low": {
+            "size_variation": 0.05,
+            "rotation_max": 1.5,
+            "position_x": 0.4,
+            "position_y": 0.3,
+            "width_scale": 0.005,
+            "height_scale": 0.005,
+            "spacing_variation": 0.03,
+            "ink_variation": 2,
+            "word_size_var": 0.03,
+            "word_ink_var": 2,
+            "word_angle_max": 1.0,
+        },
+        "medium": {
+            "size_variation": 0.10,
+            "rotation_max": 3.0,
+            "position_x": 0.8,
+            "position_y": 0.6,
+            "width_scale": 0.015,
+            "height_scale": 0.015,
+            "spacing_variation": 0.06,
+            "ink_variation": 4,
+            "word_size_var": 0.05,
+            "word_ink_var": 3,
+            "word_angle_max": 2.0,
+        },
+        "high": {
+            "size_variation": 0.15,
+            "rotation_max": 5.0,
+            "position_x": 1.5,
+            "position_y": 1.0,
+            "width_scale": 0.025,
+            "height_scale": 0.025,
+            "spacing_variation": 0.10,
+            "ink_variation": 6,
+            "word_size_var": 0.08,
+            "word_ink_var": 4,
+            "word_angle_max": 3.0,
+        },
+    }
+
+    _CHAR_VARIATION_PROBABILITY = {"low": 0.20, "medium": 0.35, "high": 0.50}
 
     def __init__(self, variation_level: str = "medium"):
-        """
-        Initialize variation engine
-
-        Args:
-            variation_level: "low", "medium", "high" - controls amount of variation
-        """
         self.variation_level = variation_level
-        self.variation_settings = self._get_variation_settings(variation_level)
+        self.vs = self._SETTINGS.get(variation_level, self._SETTINGS["medium"])
+        self.char_variation_prob = self._CHAR_VARIATION_PROBABILITY.get(variation_level, 0.35)
 
-        # Word-level variation tracking
-        self.current_word_base_size = None
-        self.current_word_base_color = None
-        self.current_word_angle = 0.0  # Slight angle for entire word
-        self.variation_positions = []  # Which letters in word get variation
+        # Word-level state
+        self.current_word_base_size: Optional[int] = None
+        self.current_word_base_color: Optional[Tuple[int, int, int]] = None
+        self.current_word_angle: float = 0.0
+        self.variation_positions: List[int] = []
 
-        # Bounding box tracking for annotations
-        self.collected_element_bboxes = []  # Individual characters
-        self.collected_pair_bboxes = []     # Character pairs
-        self.collected_section_bboxes = []  # Text sections
-
-        # Per-character variation probability
-        self.char_variation_probability = {
-            "low": 0.20,     # ~1-2 letters per 7-letter word
-            "medium": 0.35,  # ~2-3 letters per 7-letter word
-            "high": 0.50,    # ~3-4 letters per 7-letter word
-        }.get(variation_level, 0.35)
-
-    def _get_variation_settings(self, level: str) -> dict:
-        """Get variation parameters based on level"""
-        settings = {
-            "low": {
-                "size_variation": 0.05,      # ±5%
-                "rotation_max": 1.5,         # ±1.5 degrees
-                "position_x": 0.4,           # ±0.4 pixels
-                "position_y": 0.3,           # ±0.3 pixels
-                "width_scale": 0.005,        # ±0.5%
-                "height_scale": 0.005,       # ±0.5%
-                "spacing_variation": 0.03,   # ±3% spacing
-                "ink_variation": 2,          # ±2 in RGB
-                "word_size_var": 0.03,       # ±3% per word
-                "word_ink_var": 2,           # ±2 RGB per word
-                "word_angle_max": 1.0,       # ±1.0 degrees per word
-            },
-            "medium": {
-                "size_variation": 0.10,      # ±10%
-                "rotation_max": 3.0,         # ±3.0 degrees
-                "position_x": 0.8,           # ±0.8 pixels
-                "position_y": 0.6,           # ±0.6 pixels
-                "width_scale": 0.015,        # ±1.5%
-                "height_scale": 0.015,       # ±1.5%
-                "spacing_variation": 0.06,   # ±6% spacing
-                "ink_variation": 4,          # ±4 in RGB
-                "word_size_var": 0.05,       # ±5% per word
-                "word_ink_var": 3,           # ±3 RGB per word
-                "word_angle_max": 2.0,       # ±2 degrees per word
-            },
-            "high": {
-                "size_variation": 0.15,      # ±15%
-                "rotation_max": 5.0,         # ±5.0 degrees
-                "position_x": 1.5,           # ±1.5 pixels
-                "position_y": 1.0,           # ±1.0 pixels
-                "width_scale": 0.025,        # ±2.5%
-                "height_scale": 0.025,       # ±2.5%
-                "spacing_variation": 0.10,   # ±10% spacing
-                "ink_variation": 6,          # ±6 in RGB
-                "word_size_var": 0.08,       # ±8% per word
-                "word_ink_var": 4,           # ±4 RGB per word
-                "word_angle_max": 3.0,       # ±3.0 degrees per word
-            }
-        }
-        return settings.get(level, settings["medium"])
+        # Collected bounding boxes
+        self.collected_element_bboxes: List[BoundingBox] = []
+        self.collected_pair_bboxes: List[BoundingBox] = []
+        self.collected_section_bboxes: List[BoundingBox] = []
 
     def start_new_word(self, base_size: int, base_color: Tuple[int, int, int], word_length: int):
-        """Initialize variations for a new word"""
-        # Set word-level base values (slight variation per word)
-        size_var = self.variation_settings["word_size_var"]
-        self.current_word_base_size = int(base_size * (1.0 + random.uniform(-size_var, size_var)))
+        sv = self.vs["word_size_var"]
+        self.current_word_base_size = int(base_size * (1.0 + random.uniform(-sv, sv)))
 
-        ink_var = self.variation_settings["word_ink_var"]
+        iv = self.vs["word_ink_var"]
         self.current_word_base_color = (
-            max(0, min(255, base_color[0] + random.randint(-ink_var, ink_var))),
-            max(0, min(255, base_color[1] + random.randint(-ink_var, ink_var))),
-            max(0, min(255, base_color[2] + random.randint(-ink_var, ink_var)))
+            max(0, min(255, base_color[0] + random.randint(-iv, iv))),
+            max(0, min(255, base_color[1] + random.randint(-iv, iv))),
+            max(0, min(255, base_color[2] + random.randint(-iv, iv))),
         )
 
-        # Set a slight angle for the entire word (not perfectly horizontal)
-        angle_max = self.variation_settings["word_angle_max"]
-        self.current_word_angle = random.uniform(-angle_max, angle_max)
+        self.current_word_angle = random.uniform(-self.vs["word_angle_max"], self.vs["word_angle_max"])
 
-        # Decide which 1-2 letters in this word will have variation
-        self.variation_positions = []
-        if word_length > 0:
-            # For a 7-letter word, typically get 1-2 positions
-            num_variations = max(0, int(word_length * self.char_variation_probability))
-            if num_variations > 0:
-                self.variation_positions = random.sample(range(word_length),
-                                                        min(num_variations, word_length))
+        num_var = max(0, int(word_length * self.char_variation_prob))
+        self.variation_positions = (
+            random.sample(range(word_length), min(num_var, word_length)) if num_var else []
+        )
 
     def should_apply_variation(self, char_index: int) -> bool:
-        """Check if this specific character position should get variation"""
         return char_index in self.variation_positions
 
     def get_varied_font_size(self, base_size: int, char_index: int = -1) -> int:
-        """Get varied font size for this character"""
-        # Use word-level base size
-        word_size = self.current_word_base_size if self.current_word_base_size else base_size
-
+        word_size = self.current_word_base_size or base_size
         if char_index >= 0 and not self.should_apply_variation(char_index):
             return word_size
-
-        variation = self.variation_settings["size_variation"]
-        factor = 1.0 + random.uniform(-variation, variation)
+        factor = 1.0 + random.uniform(-self.vs["size_variation"], self.vs["size_variation"])
         return max(int(word_size * factor), word_size - 2)
 
     def get_varied_position(self, char_index: int = -1) -> Tuple[float, float]:
-        """Get position offset for this character"""
         if char_index >= 0 and not self.should_apply_variation(char_index):
             return 0.0, 0.0
-
-        x_offset = random.uniform(
-            -self.variation_settings["position_x"],
-            self.variation_settings["position_x"]
+        return (
+            random.uniform(-self.vs["position_x"], self.vs["position_x"]),
+            random.uniform(-self.vs["position_y"], self.vs["position_y"]),
         )
-        y_offset = random.uniform(
-            -self.variation_settings["position_y"],
-            self.variation_settings["position_y"]
-        )
-        return x_offset, y_offset
 
     def get_varied_rotation(self, char_index: int = -1) -> float:
-        """Get rotation angle for this character"""
         if char_index >= 0 and not self.should_apply_variation(char_index):
             return 0.0
-
-        max_rotation = self.variation_settings["rotation_max"]
-        return random.uniform(-max_rotation, max_rotation)
+        return random.uniform(-self.vs["rotation_max"], self.vs["rotation_max"])
 
     def get_varied_scale(self, char_index: int = -1) -> Tuple[float, float]:
-        """Get width and height scale factors"""
         if char_index >= 0 and not self.should_apply_variation(char_index):
             return 1.0, 1.0
-
-        width_var = self.variation_settings["width_scale"]
-        height_var = self.variation_settings["height_scale"]
-
-        width_scale = 1.0 + random.uniform(-width_var, width_var)
-        height_scale = 1.0 + random.uniform(-height_var, height_var)
-
-        return width_scale, height_scale
+        return (
+            1.0 + random.uniform(-self.vs["width_scale"], self.vs["width_scale"]),
+            1.0 + random.uniform(-self.vs["height_scale"], self.vs["height_scale"]),
+        )
 
     def get_varied_spacing(self, base_spacing: float, char_index: int = -1) -> float:
-        """Get varied spacing between characters - minimal variation to keep letters together"""
-        # Only vary spacing for characters that have other variations applied
         if char_index >= 0 and char_index in self.variation_positions:
-            variation = self.variation_settings["spacing_variation"] * 0.15  # Very minimal
-            factor = 1.0 + random.uniform(-variation, variation)
+            factor = 1.0 + random.uniform(
+                -self.vs["spacing_variation"] * 0.15,
+                self.vs["spacing_variation"] * 0.15,
+            )
             return base_spacing * factor
-        # No spacing variation for most characters - keep them flowing together
         return base_spacing
 
-    def get_varied_ink_color(self, base_color: Tuple[int, int, int], char_index: int = -1) -> Tuple[int, int, int]:
-        """Get slightly varied ink color"""
-        # Use word-level base color
-        word_color = self.current_word_base_color if self.current_word_base_color else base_color
-
+    def get_varied_ink_color(
+        self, base_color: Tuple[int, int, int], char_index: int = -1
+    ) -> Tuple[int, int, int]:
+        word_color = self.current_word_base_color or base_color
         if char_index >= 0 and not self.should_apply_variation(char_index):
             return word_color
+        v = self.vs["ink_variation"]
+        return (
+            max(0, min(255, word_color[0] + random.randint(-v, v))),
+            max(0, min(255, word_color[1] + random.randint(-v, v))),
+            max(0, min(255, word_color[2] + random.randint(-v, v))),
+        )
 
-        variation = self.variation_settings["ink_variation"]
-        r = max(0, min(255, word_color[0] + random.randint(-variation, variation)))
-        g = max(0, min(255, word_color[1] + random.randint(-variation, variation)))
-        b = max(0, min(255, word_color[2] + random.randint(-variation, variation)))
-        return (r, g, b)
-
-    def render_varied_character(self, draw: ImageDraw.Draw, char: str,
-                               x: float, y: float, font_path: str,
-                               base_size: int, base_color: Tuple[int, int, int],
-                               temp_image: Image.Image, char_index: int = -1,
-                               char_position_in_word: int = 0) -> float:
-        """
-        Render a single character with variations
-
-        Returns: x position for next character
-        """
-        # Get variations for this character
+    def render_varied_character(
+        self,
+        draw: ImageDraw.ImageDraw,
+        char: str,
+        x: float,
+        y: float,
+        font_path: str,
+        base_size: int,
+        base_color: Tuple[int, int, int],
+        temp_image: Image.Image,
+        char_index: int = -1,
+        char_position_in_word: int = 0,
+    ) -> float:
+        """Render one character with variations. Returns x position for next character."""
         varied_size = self.get_varied_font_size(base_size, char_index)
         x_offset, y_offset = self.get_varied_position(char_index)
         rotation = self.get_varied_rotation(char_index)
         width_scale, height_scale = self.get_varied_scale(char_index)
         ink_color = self.get_varied_ink_color(base_color, char_index)
 
-        # Apply word-level angle offset
-        angle_y_offset = char_position_in_word * math.tan(math.radians(self.current_word_angle)) * 10
-        y_offset += angle_y_offset
+        y_offset += char_position_in_word * math.tan(math.radians(self.current_word_angle)) * 10
 
-        # Load font
         try:
             font = ImageFont.truetype(font_path, varied_size)
-        except:
+        except Exception:
             font = ImageFont.load_default()
 
-        # Get character size
         bbox = draw.textbbox((0, 0), char, font=font)
         char_width = bbox[2] - bbox[0]
         char_height = bbox[3] - bbox[1]
 
-        actual_x = x + x_offset
-        actual_y = y + y_offset
-
-        # Apply transformations if needed
         use_rotation = abs(rotation) > 0.01 and char_index in self.variation_positions
-        use_scaling = (abs(width_scale - 1.0) > 0.01 or abs(height_scale - 1.0) > 0.01) and \
-                      char_index in self.variation_positions
+        use_scaling = (
+            (abs(width_scale - 1.0) > 0.01 or abs(height_scale - 1.0) > 0.01)
+            and char_index in self.variation_positions
+        )
 
         if use_rotation or use_scaling:
             padding = max(char_width, char_height) // 2 + 10
             temp_size = max(char_width, char_height) + padding * 2
             char_img = Image.new('RGBA', (temp_size, temp_size), (0, 0, 0, 0))
             char_draw = ImageDraw.Draw(char_img)
-
-            char_x = (temp_size - char_width) // 2
-            char_y = (temp_size - char_height) // 2
-            char_draw.text((char_x, char_y), char, font=font, fill=ink_color)
+            char_draw.text(
+                ((temp_size - char_width) // 2, (temp_size - char_height) // 2),
+                char, font=font, fill=ink_color,
+            )
 
             if use_rotation:
                 char_img = char_img.rotate(rotation, expand=False, resample=Image.BICUBIC)
 
             if use_scaling:
-                new_width = int(temp_size * width_scale)
-                new_height = int(temp_size * height_scale)
-                if new_width > 0 and new_height > 0:
-                    char_img = char_img.resize((new_width, new_height), Image.BICUBIC)
-                    if new_width > temp_size or new_height > temp_size:
-                        crop_x = max(0, (new_width - temp_size) // 2)
-                        crop_y = max(0, (new_height - temp_size) // 2)
-                        char_img = char_img.crop((crop_x, crop_y,
-                                                 crop_x + temp_size,
-                                                 crop_y + temp_size))
+                new_w = int(temp_size * width_scale)
+                new_h = int(temp_size * height_scale)
+                if new_w > 0 and new_h > 0:
+                    char_img = char_img.resize((new_w, new_h), Image.BICUBIC)
+                    if new_w > temp_size or new_h > temp_size:
+                        crop_x = max(0, (new_w - temp_size) // 2)
+                        crop_y = max(0, (new_h - temp_size) // 2)
+                        char_img = char_img.crop((crop_x, crop_y, crop_x + temp_size, crop_y + temp_size))
 
             paste_x = int(x + x_offset - temp_size // 2 + char_width // 2)
             paste_y = int(y + y_offset - temp_size // 2 + char_height // 2)
 
-            # Compute the overlap between the temp image and the main image,
-            # then crop & paste only the visible portion.  This avoids silently
-            # dropping characters that are partially outside the image bounds.
             src_x1 = max(0, -paste_x)
             src_y1 = max(0, -paste_y)
             src_x2 = min(char_img.width, temp_image.width - paste_x)
             src_y2 = min(char_img.height, temp_image.height - paste_y)
 
             if src_x2 > src_x1 and src_y2 > src_y1:
-                dst_x = max(0, paste_x)
-                dst_y = max(0, paste_y)
                 cropped = char_img.crop((src_x1, src_y1, src_x2, src_y2))
-                temp_image.paste(cropped, (dst_x, dst_y), cropped)
+                temp_image.paste(cropped, (max(0, paste_x), max(0, paste_y)), cropped)
         else:
-            draw.text((actual_x, actual_y), char, font=font, fill=ink_color)
+            draw.text((x + x_offset, y + y_offset), char, font=font, fill=ink_color)
 
-        base_spacing = char_width * 0.95
-        next_x = x + self.get_varied_spacing(base_spacing, char_index)
+        return x + self.get_varied_spacing(char_width * 0.95, char_index)
 
-        return next_x
+    def _track_char_bbox(
+        self,
+        draw: ImageDraw.ImageDraw,
+        char: str,
+        x: float,
+        y: float,
+        font_path: str,
+        base_size: int,
+        char_idx: int,
+        min_x: float,
+        min_y: float,
+        max_x: float,
+        max_y: float,
+    ) -> Tuple[float, float, float, float]:
+        """Compute the bbox of one character after variation offsets. Returns updated min/max."""
+        try:
+            varied_size = self.get_varied_font_size(base_size, char_idx)
+            x_off, y_off = self.get_varied_position(char_idx)
+            y_off += char_idx * math.tan(math.radians(self.current_word_angle)) * 10
+            font = ImageFont.truetype(font_path, varied_size)
+            bb = draw.textbbox((x + x_off, y + y_off), char, font=font)
+            min_x = min(min_x, bb[0])
+            min_y = min(min_y, bb[1])
+            max_x = max(max_x, bb[2])
+            max_y = max(max_y, bb[3])
+        except Exception:
+            pass
+        return min_x, min_y, max_x, max_y
 
-    def render_varied_text(self, img: Image.Image, text: str,
-                           start_x: float, start_y: float,
-                           font_path: str, base_size: int,
-                           base_color: Tuple[int, int, int] = (44, 36, 22),
-                           track_annotations: bool = False,
-                           x_limit: Optional[float] = None) -> Tuple[float, float]:
-        """
-        Render entire text with character variations
-
-        Args:
-            track_annotations: If True, collect bounding box for this text as an element
-            x_limit: If set, stop rendering characters once x reaches this value
-
-        Returns: (end_x, end_y)
-        """
+    def render_varied_text(
+        self,
+        img: Image.Image,
+        text: str,
+        start_x: float,
+        start_y: float,
+        font_path: str,
+        base_size: int,
+        base_color: Tuple[int, int, int] = (44, 36, 22),
+        track_annotations: bool = False,
+        x_limit: Optional[float] = None,
+    ) -> Tuple[float, float]:
+        """Render text with per-character variations. Returns (end_x, end_y)."""
         draw = ImageDraw.Draw(img)
         x = start_x
         y = start_y
 
-        # Track bounding box for this entire text if needed
+        PADDING = 2
         min_x = float('inf')
         min_y = float('inf')
         max_x = float('-inf')
         max_y = float('-inf')
 
-        BBOX_PADDING = 2
+        def _render_word(word: str):
+            nonlocal x, min_x, min_y, max_x, max_y
+            self.start_new_word(base_size, base_color, len(word))
+            for char_idx, char in enumerate(word):
+                if x_limit is not None and x >= x_limit:
+                    break
+                if track_annotations:
+                    min_x, min_y, max_x, max_y = self._track_char_bbox(
+                        draw, char, x, y, font_path, base_size, char_idx,
+                        min_x, min_y, max_x, max_y,
+                    )
+                x = self.render_varied_character(
+                    draw, char, x, y, font_path, base_size, base_color, img, char_idx, char_idx
+                )
 
         words = text.split(' ')
-
         for word_idx, word in enumerate(words):
             if '\n' in word:
                 parts = word.split('\n')
                 for part_idx, part in enumerate(parts):
                     if part:
-                        self.start_new_word(base_size, base_color, len(part))
-
-                        for char_idx, char in enumerate(part):
-                            if x_limit is not None and x >= x_limit:
-                                break
-                            char_x_start = x
-
-                            # Get the variations that will be applied to this character
-                            if track_annotations:
-                                try:
-                                    varied_size = self.get_varied_font_size(base_size, char_idx)
-                                    x_offset, y_offset = self.get_varied_position(char_idx)
-
-                                    # Apply word angle offset
-                                    angle_y_offset = char_idx * math.tan(math.radians(self.current_word_angle)) * 10
-                                    y_offset += angle_y_offset
-
-                                    # Get actual bbox with the varied size at the actual position
-                                    font = ImageFont.truetype(font_path, varied_size)
-                                    actual_x = x + x_offset
-                                    actual_y = y + y_offset
-                                    char_bbox = draw.textbbox((actual_x, actual_y), char, font=font)
-
-                                    # Track with actual offsets applied
-                                    min_x = min(min_x, char_bbox[0])
-                                    min_y = min(min_y, char_bbox[1])
-                                    max_x = max(max_x, char_bbox[2])
-                                    max_y = max(max_y, char_bbox[3])
-                                except:
-                                    pass
-
-                            # render_varied_character returns only x now
-                            x = self.render_varied_character(
-                                draw, char, x, y, font_path, base_size, base_color, img, char_idx, char_idx
-                            )
-
+                        _render_word(part)
                     if part_idx < len(parts) - 1:
                         x = start_x
-                        y += base_size + self.variation_settings["position_y"] * 2
+                        y += base_size + self.vs["position_y"] * 2
             else:
-                self.start_new_word(base_size, base_color, len(word))
-
-                for char_idx, char in enumerate(word):
-                    if x_limit is not None and x >= x_limit:
-                        break
-                    char_x_start = x
-
-                    # Get the variations that will be applied to this character
-                    if track_annotations:
-                        try:
-                            varied_size = self.get_varied_font_size(base_size, char_idx)
-                            x_offset, y_offset = self.get_varied_position(char_idx)
-
-                            # Apply word angle offset
-                            angle_y_offset = char_idx * math.tan(math.radians(self.current_word_angle)) * 10
-                            y_offset += angle_y_offset
-
-                            # Get actual bbox with the varied size at the actual position
-                            font = ImageFont.truetype(font_path, varied_size)
-                            actual_x = x + x_offset
-                            actual_y = y + y_offset
-                            char_bbox = draw.textbbox((actual_x, actual_y), char, font=font)
-
-                            # Track with actual offsets applied
-                            min_x = min(min_x, char_bbox[0])
-                            min_y = min(min_y, char_bbox[1])
-                            max_x = max(max_x, char_bbox[2])
-                            max_y = max(max_y, char_bbox[3])
-                        except:
-                            pass
-
-                    # render_varied_character returns only x now
-                    x = self.render_varied_character(
-                        draw, char, x, y, font_path, base_size, base_color, img, char_idx, char_idx
-                    )
+                _render_word(word)
 
             if word_idx < len(words) - 1:
                 if x_limit is not None and x >= x_limit:
                     break
                 x += self.get_varied_spacing(base_size * 0.3)
 
-        # Store element bbox if tracking
         if track_annotations and min_x != float('inf'):
-            text_bbox = BoundingBox()
-            text_bbox.text = text
-            text_bbox.min_x = min_x - BBOX_PADDING
-            text_bbox.min_y = min_y - BBOX_PADDING
-            text_bbox.max_x = max_x + BBOX_PADDING
-            text_bbox.max_y = max_y + BBOX_PADDING
-
-            self.collected_element_bboxes.append(text_bbox)
+            bb = BoundingBox()
+            bb.text = text
+            bb.min_x = min_x - PADDING
+            bb.min_y = min_y - PADDING
+            bb.max_x = max_x + PADDING
+            bb.max_y = max_y + PADDING
+            self.collected_element_bboxes.append(bb)
 
         return x, y
 
     def get_annotations(self, image_id: int = 0) -> List[COCOAnnotation]:
-        """
-        Convert collected bounding boxes to COCO annotations
-
-        Returns: List of COCO annotations for elements, pairs, and sections
-        """
-        annotations = []
-
-        # Element annotations (category_id = 0) - individual cipher texts and keys
-        for bbox in self.collected_element_bboxes:
-            if bbox.is_valid():
-                ann = COCOAnnotation(
-                    id=0,  # Will be set by manager
-                    image_id=image_id,
-                    category_id=0,  # element
-                    segmentation=bbox.to_segmentation(),
-                    area=bbox.get_area(),
-                    bbox=bbox.to_coco_bbox(),
-                    iscrowd=0,
-                    text=bbox.text
-                )
-                annotations.append(ann)
-
-        # Pair annotations (category_id = 1) - cipher + key combinations
-        for bbox in self.collected_pair_bboxes:
-            if bbox.is_valid():
-                ann = COCOAnnotation(
-                    id=0,  # Will be set by manager
-                    image_id=image_id,
-                    category_id=1,  # pair
-                    segmentation=bbox.to_segmentation(),
-                    area=bbox.get_area(),
-                    bbox=bbox.to_coco_bbox(),
-                    iscrowd=0,
-                    text=bbox.text
-                )
-                annotations.append(ann)
-
-        # Section annotations (category_id = 2) - groups of pairs
-        for bbox in self.collected_section_bboxes:
-            if bbox.is_valid():
-                ann = COCOAnnotation(
-                    id=0,  # Will be set by manager
-                    image_id=image_id,
-                    category_id=2,  # section
-                    segmentation=bbox.to_segmentation(),
-                    area=bbox.get_area(),
-                    bbox=bbox.to_coco_bbox(),
-                    iscrowd=0,
-                    text=bbox.text
-                )
-                annotations.append(ann)
-
-        return annotations
+        """Convert all collected bboxes to COCO annotations."""
+        anns = []
+        for cat_id, bboxes in (
+            (0, self.collected_element_bboxes),
+            (1, self.collected_pair_bboxes),
+            (2, self.collected_section_bboxes),
+        ):
+            for bb in bboxes:
+                if bb.is_valid():
+                    anns.append(COCOAnnotation(
+                        id=0,
+                        image_id=image_id,
+                        category_id=cat_id,
+                        segmentation=bb.to_segmentation(),
+                        area=bb.get_area(),
+                        bbox=bb.to_coco_bbox(),
+                        iscrowd=0,
+                        text=bb.text,
+                    ))
+        return anns
 
 
 class CipherEntryRenderer:
-    """High-level renderer for cipher entries (cipher_text + separator + key_value)
-
-    Encapsulates the low-level VariatedTextRenderer and provides domain-specific
-    layout logic for rendering cipher entries with proper annotation tracking.
-    """
+    """High-level renderer for (cipher_text + separator + key_value) pairs."""
 
     def __init__(self, text_renderer: VariatedTextRenderer):
         self._text_renderer = text_renderer
-        self._section_start_idx = None
+        self._section_start_idx: Optional[int] = None
 
     @staticmethod
     def _draw_wavy_line(
         draw: ImageDraw.ImageDraw,
         x1: int, y1: int, x2: int, y2: int,
-        color, width: int = 1,
-        amplitude: float = 1.0, segment_len: int = 10,
+        color,
+        width: int = 1,
+        amplitude: float = 1.0,
+        segment_len: int = 10,
     ) -> None:
-        """Draw a slightly wavy line simulating a hand-drawn ruler line."""
+        """Draw a slightly wavy hand-drawn rule line."""
         dx = x2 - x1
         dy = y2 - y1
         length = (dx * dx + dy * dy) ** 0.5
@@ -500,188 +371,110 @@ class CipherEntryRenderer:
             off = random.uniform(-amplitude, amplitude)
             pts.append((x1 + dx * t + nx * off, y1 + dy * t + ny * off))
         pts.append((float(x2), float(y2)))
-        for i in range(len(pts) - 1):
-            p0 = (int(round(pts[i][0])), int(round(pts[i][1])))
-            p1 = (int(round(pts[i + 1][0])), int(round(pts[i + 1][1])))
-            draw.line([p0, p1], fill=color, width=width)
+        for a, b in zip(pts, pts[1:]):
+            draw.line(
+                [(int(round(a[0])), int(round(a[1]))), (int(round(b[0])), int(round(b[1])))],
+                fill=color, width=width,
+            )
 
     def start_section(self):
-        """Mark the start of a new section for annotation tracking"""
         self._section_start_idx = len(self._text_renderer.collected_pair_bboxes)
 
     def end_section(self, section_id: int = 0) -> Optional[BoundingBox]:
-        """
-        Create and store a section bounding box from all pairs since start_section()
-
-        Args:
-            section_id: Identifier for this section
-
-        Returns:
-            The created section bbox, or None if no pairs were added
-        """
         if self._section_start_idx is None:
             return None
-
-        section_end_idx = len(self._text_renderer.collected_pair_bboxes)
-        section_pairs = self._text_renderer.collected_pair_bboxes[self._section_start_idx:section_end_idx]
-
-        if len(section_pairs) == 0:
+        pairs = self._text_renderer.collected_pair_bboxes[self._section_start_idx:]
+        if not pairs:
             return None
 
-        # Create section bbox by combining all pair bboxes
         section_bbox = BoundingBox()
-        section_bbox.text = f"Section {section_id} ({len(section_pairs)} entries)"
-
-        for pair_bbox in section_pairs:
-            if section_bbox.min_x == float('inf'):
-                section_bbox.min_x = pair_bbox.min_x
-                section_bbox.min_y = pair_bbox.min_y
-                section_bbox.max_x = pair_bbox.max_x
-                section_bbox.max_y = pair_bbox.max_y
-            else:
-                section_bbox.min_x = min(section_bbox.min_x, pair_bbox.min_x)
-                section_bbox.min_y = min(section_bbox.min_y, pair_bbox.min_y)
-                section_bbox.max_x = max(section_bbox.max_x, pair_bbox.max_x)
-                section_bbox.max_y = max(section_bbox.max_y, pair_bbox.max_y)
+        section_bbox.text = f"Section {section_id} ({len(pairs)} entries)"
+        for pair_bbox in pairs:
+            section_bbox.add_point(pair_bbox.min_x, pair_bbox.min_y)
+            section_bbox.add_point(pair_bbox.max_x, pair_bbox.max_y)
 
         if section_bbox.is_valid():
             self._text_renderer.collected_section_bboxes.append(section_bbox)
-            self._section_start_idx = None  # Reset for next section
+            self._section_start_idx = None
             return section_bbox
-
         return None
 
     def get_annotations(self, image_id: int = 0) -> List[COCOAnnotation]:
-        """
-        Get all COCO annotations (elements, pairs, sections)
-
-        Args:
-            image_id: The image ID for the annotations
-
-        Returns:
-            List of COCO annotations
-        """
         return self._text_renderer.get_annotations(image_id)
 
     def reset_annotations(self):
-        """Reset all collected annotations"""
         self._text_renderer.collected_element_bboxes = []
         self._text_renderer.collected_pair_bboxes = []
         self._text_renderer.collected_section_bboxes = []
         self._section_start_idx = None
 
-    def render_cipher_entry(self, img: Image.Image, cipher_text: str,
-                            key_value: str, x: float, y: float,
-                            font_path: str, base_size: int,
-                            separator: str = " — — — ",
-                            column_separator: str = "none",
-                            paper_width: int = 800,
-                            track_annotations: bool = False,
-                            max_column_width: int = 300,
-                            ink_color: tuple = None,
-                            pair_format: str = "text_first",
-                            spacing: int = 0,
-                            pair_spacing: int = 10) -> float:
-        """
-        Render a cipher entry (text + separator + key) with variations
-
-        Args:
-            pair_format: "text_first" renders "word — 123",
-                         "number_first" renders "123 — word".
-
-        Returns: y position for next line
-        """
-        base_color = ink_color if ink_color is not None else (44, 36, 22)
-
-        # Right boundary: never render beyond this x coordinate
+    def render_cipher_entry(
+        self,
+        img: Image.Image,
+        cipher_text: str,
+        key_value: str,
+        x: float,
+        y: float,
+        font_path: str,
+        base_size: int,
+        separator: str = " — — — ",
+        column_separator: str = "none",
+        paper_width: int = 800,
+        track_annotations: bool = False,
+        max_column_width: int = 300,
+        ink_color: Optional[Tuple[int, int, int]] = None,
+        pair_format: str = "text_first",
+        spacing: int = 0,
+        pair_spacing: int = 10,
+    ) -> float:
+        """Render one cipher entry. Returns y position for the next line."""
+        base_color = ink_color or (44, 36, 22)
         right_limit = x + max_column_width
+        elements_before = len(self._text_renderer.collected_element_bboxes)
 
-        # Track which elements belong to this entry
-        elements_start_idx = len(self._text_renderer.collected_element_bboxes)
+        left_text = key_value if pair_format == "number_first" else cipher_text
+        right_text = cipher_text if pair_format == "number_first" else key_value
 
-        # Determine rendering order based on pair_format
-        if pair_format == "number_first":
-            left_text, right_text = key_value, cipher_text
-        else:
-            left_text, right_text = cipher_text, key_value
-
-        # Render left part and track its bbox
-        end_x, end_y = self._text_renderer.render_varied_text(
+        end_x, _ = self._text_renderer.render_varied_text(
             img, left_text, x, y, font_path, base_size, base_color, track_annotations,
-            x_limit=right_limit
+            x_limit=right_limit,
         )
-
-        # Render separator (don't track)
-        sep_x = end_x + pair_spacing
         sep_end_x, _ = self._text_renderer.render_varied_text(
-            img, separator, sep_x, y, font_path, base_size, base_color, False,
-            x_limit=right_limit
+            img, separator, end_x + pair_spacing, y, font_path, base_size, base_color, False,
+            x_limit=right_limit,
         )
-
-        # Render right part and track its bbox AS A SEPARATE ELEMENT
-        key_x = sep_end_x + pair_spacing
         key_end_x, _ = self._text_renderer.render_varied_text(
-            img, right_text, key_x, y, font_path, base_size, base_color, track_annotations,
-            x_limit=right_limit
+            img, right_text, sep_end_x + pair_spacing, y, font_path, base_size, base_color,
+            track_annotations, x_limit=right_limit,
         )
-        # Clip key_end_x so separators don't extend past the right boundary
         key_end_x = min(key_end_x, right_limit)
 
-        # Create pair bbox from all elements added during this entry
         if track_annotations:
-            elements_end_idx = len(self._text_renderer.collected_element_bboxes)
-
-            # Get all elements that were added (cipher_text + key_value)
-            entry_elements = self._text_renderer.collected_element_bboxes[elements_start_idx:elements_end_idx]
-
-            if len(entry_elements) >= 2:  # Should have at least cipher + key
-                # Create pair bbox combining all elements in this entry
+            entry_elements = self._text_renderer.collected_element_bboxes[elements_before:]
+            if len(entry_elements) >= 2:
                 pair_bbox = BoundingBox()
                 pair_bbox.text = f"{cipher_text} — {key_value}"
-
-                for elem_bbox in entry_elements:
-                    pair_bbox.min_x = min(pair_bbox.min_x, elem_bbox.min_x) if pair_bbox.min_x != float(
-                        'inf') else elem_bbox.min_x
-                    pair_bbox.min_y = min(pair_bbox.min_y, elem_bbox.min_y) if pair_bbox.min_y != float(
-                        'inf') else elem_bbox.min_y
-                    pair_bbox.max_x = max(pair_bbox.max_x, elem_bbox.max_x) if pair_bbox.max_x != float(
-                        '-inf') else elem_bbox.max_x
-                    pair_bbox.max_y = max(pair_bbox.max_y, elem_bbox.max_y) if pair_bbox.max_y != float(
-                        '-inf') else elem_bbox.max_y
-
+                for eb in entry_elements:
+                    pair_bbox.add_point(eb.min_x, eb.min_y)
+                    pair_bbox.add_point(eb.max_x, eb.max_y)
                 if pair_bbox.is_valid():
                     self._text_renderer.collected_pair_bboxes.append(pair_bbox)
 
-        # Calculate next line position (base font size + user spacing + variation headroom)
-        line_height = base_size + spacing + self._text_renderer.variation_settings["position_y"] * 3
+        line_height = base_size + spacing + self._text_renderer.vs["position_y"] * 3
         next_y = y + self._text_renderer.get_varied_spacing(line_height)
 
-        # Draw row separator if needed
         if column_separator != 'none':
             draw = ImageDraw.Draw(img)
-            # Position separator halfway between this line and next line
-            separator_gap = base_size * 0.3  # 30% of font size
-            separator_y = int(next_y + separator_gap)
-            # Span exactly the rendered pair — from left edge to rightmost rendered pixel
+            sep_gap = base_size * 0.3
+            sep_y = int(next_y + sep_gap)
             line_width = int(key_end_x) - int(x)
 
-            if column_separator == 'line':
+            self._draw_wavy_line(draw, int(x), sep_y, int(x + line_width), sep_y, color=base_color)
+            if column_separator == 'double_line':
+                gap = max(2, int(base_size * 0.15))
                 self._draw_wavy_line(
-                    draw, int(x), separator_y, int(x + line_width), separator_y,
-                    color=base_color,
+                    draw, int(x), sep_y + gap, int(x + line_width), sep_y + gap, color=base_color
                 )
-            elif column_separator == 'double_line':
-                self._draw_wavy_line(
-                    draw, int(x), separator_y, int(x + line_width), separator_y,
-                    color=base_color,
-                )
-                spacing = max(2, int(base_size * 0.15))  # Space between lines scales with font
-                self._draw_wavy_line(
-                    draw, int(x), separator_y + spacing, int(x + line_width), separator_y + spacing,
-                    color=base_color,
-                )
-
-            # Add extra space after separator (scales with font size)
-            next_y += separator_gap * 2
+            next_y += sep_gap * 2
 
         return next_y
