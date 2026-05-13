@@ -900,7 +900,7 @@ class CipherGeneratorGUI:
 
     def _get_ink_color_rgb(self) -> tuple:
         """Return the (R, G, B) tuple for the currently selected ink colour."""
-        return self.INK_COLOR_MAP.get(self.ink_color_var.get(), (44, 36, 22))
+        return INK_COLOR_MAP.get(self.ink_color_var.get(), (44, 36, 22))
 
     def _update_cm_labels(self, *_args):
         """Refresh the ≈ cm helper labels next to the spinboxes."""
@@ -954,10 +954,6 @@ class CipherGeneratorGUI:
                   command=self.export_annotations, width=20).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Export YOLO",
                   command=self.export_yolo_annotations, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Stats",
-                  command=self.show_stats, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Fonts",
-                  command=self.show_font_stats, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Generate Dataset",
                   command=self.open_dataset_dialog, width=18).pack(side=tk.LEFT, padx=5)
 
@@ -1642,41 +1638,6 @@ class CipherGeneratorGUI:
                 "Error",
                 f"Failed to export YOLO annotations:\n{str(e)}\n\n{traceback.format_exc()}",
             )
-
-    def show_stats(self):
-        """Show dataset statistics"""
-        if self.current_generator is None:
-            messagebox.showinfo("Statistics", "No data yet. Generate a preview first!")
-            return
-
-        stats = self.current_generator.get_annotation_stats()
-        ann_per_cat = stats.get('annotations_per_category', {})
-
-        message = f"""Dataset Statistics:
-        
-Total Images: {stats['total_images']}
-Total Annotations: {stats['total_annotations']}
-Categories: {stats['categories']}
-
-Annotations by Category:
-  • Elements (characters): {ann_per_cat.get('element', 0)}
-  • Pairs (bigrams): {ann_per_cat.get('pair', 0)}
-  • Sections (lines): {ann_per_cat.get('section', 0)}
-"""
-        messagebox.showinfo("Dataset Statistics", message)
-
-    def show_font_stats(self):
-        """Show font usage statistics"""
-        if not self.font_manager.has_fonts():
-            messagebox.showinfo("Font Statistics",
-                              "No custom fonts loaded.\n\nAdd .ttf or .otf files to 'fonts/handwritten' directory.")
-            return
-
-        message = f"Available Fonts: {len(self.font_manager.available_fonts)}\n\n"
-        for font_name in self.font_manager.get_all_font_names():
-            message += f"  • {font_name}\n"
-
-        messagebox.showinfo("Font Statistics", message)
 
     def open_dataset_dialog(self):
         """Open the batch dataset generation dialog."""
