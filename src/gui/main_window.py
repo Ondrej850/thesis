@@ -723,6 +723,7 @@ class CipherGeneratorGUI:
         self._update_num_symbols_visibility(panel)
         panel.cached_code_table = None
         panel.cached_code_table_key = None
+        panel.cached_words = None
         self._schedule_debounced_regenerate()
 
     def _on_panel_include_toggle(self, panel: _TablePanel):
