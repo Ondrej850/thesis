@@ -6,7 +6,7 @@ Path: src/generators/augmentation.py
 import random
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageFilter
 import albumentations as A
 
 
@@ -88,39 +88,6 @@ def _add_vignette(image: np.ndarray, strength: float = 0.5) -> np.ndarray:
     return (image * attenuation[:, :, None]).astype(np.uint8)
 
 
-_BG_PRESETS = [
-    (252, 252, 250),  # near-white
-    (240, 238, 235),  # off-white
-    (210, 208, 205),  # light grey
-    (160, 158, 155),  # mid grey
-    (70,  68,  65),   # dark grey
-    (25,  23,  20),   # near-black
-    (8,   8,   8),    # black
-]
-
-# Magenta sentinel: fills areas exposed by the affine transform.
-# Aged-paper documents never produce exact (255, 0, 255) so the mask is reliable.
-_SENTINEL = np.array([255, 0, 255], dtype=np.uint8)
-
-_SURFACE_AFFINE = A.Compose(
-    [A.Affine(
-        scale=(0.80, 0.93),
-        rotate=(-2.0, 2.0),
-        translate_percent={"x": (-0.03, 0.03), "y": (-0.03, 0.03)},
-        fill=(255, 0, 255),
-        fit_output=False,
-        p=1.0,
-    )],
-    bbox_params=A.BboxParams(
-        format="coco",
-        label_fields=["labels"],
-        clip=True,
-        filter_invalid_bboxes=True,
-        min_area=4.0,
-        min_visibility=0.75,
-    ),
-)
-
 _PIPELINE = [
     A.ToSepia(p=0.40),
     A.ColorJitter(
@@ -138,7 +105,6 @@ _PIPELINE = [
         shadow_intensity_range=(0.05, 0.15),
         p=0.15,
     ),
-    A.Perspective(scale=(0.004, 0.02), p=0.50),
     A.OneOf([
         A.GaussianBlur(blur_limit=(3, 3)),
         A.MotionBlur(blur_limit=3),
@@ -161,58 +127,6 @@ _TRANSFORM = A.Compose(
 )
 
 
-def add_surface_capture(image: np.ndarray, bboxes=None, labels=None):
-    """Simulate a document photographed lying on a surface.
-
-    Uses albumentations Affine (via _SURFACE_AFFINE) for all geometric
-    transforms so bbox updating is handled consistently with _TRANSFORM.
-    A magenta sentinel fills the exposed border; those pixels are then
-    replaced with a plain background + soft drop shadow.
-    """
-    h, w = image.shape[:2]
-    bg_color = random.choice(_BG_PRESETS)
-
-    bboxes_in = list(bboxes) if bboxes is not None else []
-    labels_in = list(labels) if labels is not None else []
-
-    result = _SURFACE_AFFINE(image=image, bboxes=bboxes_in, labels=labels_in)
-    transformed = result["image"].copy()
-
-    # Pixels the affine filled with the sentinel → these are the background areas
-    bg_mask = np.all(transformed == _SENTINEL, axis=2)
-
-    # Build background canvas + drop shadow
-    bg = np.full((h, w, 3), bg_color, dtype=np.uint8)
-    doc_pix = ~bg_mask
-    if doc_pix.any():
-        rows = np.where(doc_pix.any(axis=1))[0]
-        cols = np.where(doc_pix.any(axis=0))[0]
-        x1, x2 = int(cols[0]), int(cols[-1])
-        y1, y2 = int(rows[0]), int(rows[-1])
-
-        shadow_off  = random.randint(6, 18)
-        shadow_blur = random.randint(10, 24)
-        shadow_a    = random.randint(60, 130)
-        shadow_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-        ImageDraw.Draw(shadow_layer).rectangle(
-            [x1 + shadow_off, y1 + shadow_off, x2 + shadow_off, y2 + shadow_off],
-            fill=(0, 0, 0, shadow_a),
-        )
-        shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(shadow_blur))
-        bg = np.array(
-            Image.alpha_composite(
-                Image.fromarray(bg).convert("RGBA"), shadow_layer
-            ).convert("RGB")
-        )
-
-    # Replace sentinel pixels with background (shadow included where applicable)
-    transformed[bg_mask] = bg[bg_mask]
-
-    if bboxes is None:
-        return transformed
-    return transformed, list(result["bboxes"]), list(result["labels"])
-
-
 def apply_photo_augmentation(
     pil_img: Image.Image,
     bboxes=None,
@@ -222,10 +136,9 @@ def apply_photo_augmentation(
     """Apply photo-realistic augmentation to a generated document PIL image.
 
     Pipeline:
-      1a. Book/scanner gradient edges  OR
-      1b. Surface-capture (shrink + rotate onto plain background) — mutually exclusive, ~40% surface
+      1. Book/scanner gradient edges
       2. Optional vignette
-      3. Albumentations transforms (aging, noise, blur, perspective, compression)
+      3. Albumentations transforms (aging, noise, blur, compression)
       4. Optional bleed-through (ink ghost from reverse side)
 
     If *bboxes* is provided (list of [x, y, w, h] in COCO format) spatial
@@ -241,19 +154,9 @@ def apply_photo_augmentation(
     """
     img = np.array(pil_img.convert("RGB"))
 
-    use_surface = random.random() < 0.40
-
-    if use_surface:
-        bboxes_in = list(bboxes) if bboxes is not None else []
-        labels_in = list(labels) if labels is not None else []
-        if bboxes is not None:
-            img, bboxes_in, labels_in = add_surface_capture(img, bboxes_in, labels_in)
-        else:
-            img = add_surface_capture(img)
-    else:
-        img = add_book_edges(img)
-        bboxes_in = list(bboxes) if bboxes is not None else []
-        labels_in = list(labels) if labels is not None else []
+    img = add_book_edges(img)
+    bboxes_in = list(bboxes) if bboxes is not None else []
+    labels_in = list(labels) if labels is not None else []
 
     if random.random() < 0.40:
         img = _add_vignette(img, random.uniform(0.16, 0.50))
