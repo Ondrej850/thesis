@@ -1405,6 +1405,7 @@ class CipherGeneratorGUI:
 
         cache_key = (
             table_config.content_type,
+            table_config.num_symbols,
             table_config.num_codes,
             table_config.use_common_boost,
             table_config.common_codes,
