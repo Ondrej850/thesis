@@ -222,11 +222,11 @@ def apply_photo_augmentation(
     """Apply photo-realistic augmentation to a generated document PIL image.
 
     Pipeline:
-      1a. Book/scanner gradient edges  OR
-      1b. Surface-capture (shrink + rotate onto plain background) — mutually exclusive, ~40% surface
-      2. Optional vignette
-      3. Albumentations transforms (aging, noise, blur, perspective, compression)
-      4. Optional bleed-through (ink ghost from reverse side)
+      1. Optional bleed-through (ink ghost from reverse side)
+      2a. Book/scanner gradient edges  OR
+      2b. Surface-capture (shrink + rotate onto plain background) — mutually exclusive, ~40% surface
+      3. Optional vignette
+      4. Albumentations transforms (aging, noise, blur, perspective, compression)
 
     If *bboxes* is provided (list of [x, y, w, h] in COCO format) spatial
     transforms are applied to the bboxes too.  *labels* is a parallel list
@@ -239,6 +239,9 @@ def apply_photo_augmentation(
         Image.Image                       — when bboxes is None
         (Image.Image, bboxes, labels)     — otherwise
     """
+    if random.random() < 0.50:
+        pil_img = apply_bleed_through(pil_img, back_image=back_image)
+
     img = np.array(pil_img.convert("RGB"))
 
     use_surface = random.random() < 0.40
@@ -262,9 +265,6 @@ def apply_photo_augmentation(
     out_img = Image.fromarray(result["image"])
     out_bboxes = list(result["bboxes"])
     out_labels = list(result["labels"])
-
-    if random.random() < 0.50:
-        out_img = apply_bleed_through(out_img, back_image=back_image)
 
     if bboxes is None:
         return out_img

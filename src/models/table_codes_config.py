@@ -83,9 +83,7 @@ class TableCodesConfig:
             symbols = [s.lower() for s in COMMON_TRIGRAMS]
         elif self.content_type == 'words':
             # Use pre-fetched DB words; fall back to built-in list if not provided
-            if self.words:
-                return list(self.words)
-            symbols = [s.lower() for s in COMMON_WORDS]
+            symbols = [s.lower() for s in self.words] if self.words else [s.lower() for s in COMMON_WORDS]
         elif self.content_type == 'nulls':
             symbols = list(NULL_SYMBOLS)
         else:

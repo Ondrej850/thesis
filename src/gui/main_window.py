@@ -10,15 +10,10 @@ import random
 import os
 import threading
 from typing import List, Tuple
-import sys
-
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
-from src.models.cipher_type import CipherType
 from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
+from src.constants import INK_COLOR_MAP, PAIR_SPACING_PX
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
 from src.generators.augmentation import apply_photo_augmentation
@@ -728,6 +723,7 @@ class CipherGeneratorGUI:
         self._update_num_symbols_visibility(panel)
         panel.cached_code_table = None
         panel.cached_code_table_key = None
+        panel.cached_words = None
         self._schedule_debounced_regenerate()
 
     def _on_panel_include_toggle(self, panel: _TablePanel):
@@ -903,21 +899,9 @@ class CipherGeneratorGUI:
                                            font=("TkDefaultFont", 8), foreground="gray")
         self._ink_swatch_label.grid(row=6, column=2, sticky=tk.W, padx=5)
 
-    # ------------------------------------------------------------------
-    # Ink colour mapping
-    # ------------------------------------------------------------------
-    INK_COLOR_MAP = {
-        "dark_brown":  (44, 36, 22),
-        "black":       (15, 10, 10),
-        "faded_brown": (80, 65, 45),
-        "iron_gall":   (35, 30, 50),
-        "sepia":       (90, 60, 30),
-        "charcoal":    (50, 48, 46),
-    }
-
     def _get_ink_color_rgb(self) -> tuple:
         """Return the (R, G, B) tuple for the currently selected ink colour."""
-        return self.INK_COLOR_MAP.get(self.ink_color_var.get(), (44, 36, 22))
+        return INK_COLOR_MAP.get(self.ink_color_var.get(), (44, 36, 22))
 
     def _update_cm_labels(self, *_args):
         """Refresh the ≈ cm helper labels next to the spinboxes."""
@@ -971,10 +955,6 @@ class CipherGeneratorGUI:
                   command=self.export_annotations, width=20).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Export YOLO",
                   command=self.export_yolo_annotations, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Stats",
-                  command=self.show_stats, width=15).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Fonts",
-                  command=self.show_font_stats, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Generate Dataset",
                   command=self.open_dataset_dialog, width=18).pack(side=tk.LEFT, padx=5)
 
@@ -1246,7 +1226,6 @@ class CipherGeneratorGUI:
                         bottom_margin=bottom_margin,
                     )
                 cipher_entries = self._get_cipher_entries()
-                _spacing_map = {"tight": 2, "normal": 6, "high": 15}
                 generator.render_cipher_text(
                     img, cipher_entries, start_x, current_y,
                     block_id=1,
@@ -1258,7 +1237,7 @@ class CipherGeneratorGUI:
                     ink_color=ink_color,
                     pair_format=pair_format,
                     line_spacing_variation=float(line_spacing_jitter),
-                    pair_spacing=_spacing_map.get(self.pair_spacing_var.get(), 6),
+                    pair_spacing=PAIR_SPACING_PX.get(self.pair_spacing_var.get(), 6),
                     column_gap=self.column_gap_var.get(),
                     column_divider=self.column_divider_var.get(),
                 )
@@ -1427,6 +1406,7 @@ class CipherGeneratorGUI:
 
         cache_key = (
             table_config.content_type,
+            table_config.num_symbols,
             table_config.num_codes,
             table_config.use_common_boost,
             table_config.common_codes,
@@ -1660,41 +1640,6 @@ class CipherGeneratorGUI:
                 "Error",
                 f"Failed to export YOLO annotations:\n{str(e)}\n\n{traceback.format_exc()}",
             )
-
-    def show_stats(self):
-        """Show dataset statistics"""
-        if self.current_generator is None:
-            messagebox.showinfo("Statistics", "No data yet. Generate a preview first!")
-            return
-
-        stats = self.current_generator.get_annotation_stats()
-        ann_per_cat = stats.get('annotations_per_category', {})
-
-        message = f"""Dataset Statistics:
-        
-Total Images: {stats['total_images']}
-Total Annotations: {stats['total_annotations']}
-Categories: {stats['categories']}
-
-Annotations by Category:
-  • Elements (characters): {ann_per_cat.get('element', 0)}
-  • Pairs (bigrams): {ann_per_cat.get('pair', 0)}
-  • Sections (lines): {ann_per_cat.get('section', 0)}
-"""
-        messagebox.showinfo("Dataset Statistics", message)
-
-    def show_font_stats(self):
-        """Show font usage statistics"""
-        if not self.font_manager.has_fonts():
-            messagebox.showinfo("Font Statistics",
-                              "No custom fonts loaded.\n\nAdd .ttf or .otf files to 'fonts/handwritten' directory.")
-            return
-
-        message = f"Available Fonts: {len(self.font_manager.available_fonts)}\n\n"
-        for font_name in self.font_manager.get_all_font_names():
-            message += f"  • {font_name}\n"
-
-        messagebox.showinfo("Font Statistics", message)
 
     def open_dataset_dialog(self):
         """Open the batch dataset generation dialog."""
