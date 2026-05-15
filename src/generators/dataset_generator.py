@@ -16,7 +16,6 @@ from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
 from src.models.dataset_config import DatasetConfig
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.generators.image_generator import CipherImageGenerator
-from src.generators.table_codes_generator import TableCodesGenerator
 from src.generators.augmentation import apply_photo_augmentation
 from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
@@ -152,19 +151,19 @@ class DatasetGenerator:
                 self._transfer_annotations(generator, coco_manager, image_id)
             if current_y >= bottom_limit:
                 break
-            table_gen, code_table = self._make_table_generator(
-                table_params, params, variation_level, ink_color
-            )
-            current_y = table_gen.render_table(
-                img, params["start_x"], current_y, font_path,
-                code_table=code_table,
-                paper_width=paper_config.width,
-                paper_height=paper_config.height,
+            table_config = self._make_table_config(table_params)
+            current_y = generator.render_table_codes(
+                img, table_config, params["start_x"], current_y,
+                font_path=font_path,
+                use_variations=use_variations,
+                variation_level=variation_level,
+                track_annotations=True,
+                font_size=table_params["font_size"],
+                ink_color=ink_color,
                 right_margin=right_margin,
                 bottom_margin=bottom_margin,
-                track_annotations=True,
             )
-            coco_manager.add_annotations(image_id, table_gen.get_annotations(image_id))
+            self._transfer_annotations(generator, coco_manager, image_id)
             current_y += params["spacing"] * 2
             any_table = True
 
@@ -229,17 +228,17 @@ class DatasetGenerator:
         for table_params in params.get("tables", []):
             if current_y >= bottom_limit:
                 break
-            table_gen, code_table = self._make_table_generator(
-                table_params, params, variation_level, ink_color
-            )
-            current_y = table_gen.render_table(
-                img, params["start_x"], current_y, font_path,
-                code_table=code_table,
-                paper_width=paper_config.width,
-                paper_height=paper_config.height,
+            table_config = self._make_table_config(table_params)
+            current_y = generator.render_table_codes(
+                img, table_config, params["start_x"], current_y,
+                font_path=font_path,
+                use_variations=use_variations,
+                variation_level=variation_level,
+                track_annotations=False,
+                font_size=table_params["font_size"],
+                ink_color=ink_color,
                 right_margin=right_margin,
                 bottom_margin=bottom_margin,
-                track_annotations=False,
             )
             current_y += params["spacing"] * 2
 
@@ -298,19 +297,13 @@ class DatasetGenerator:
             ),
         )
 
-    def _make_table_generator(
-        self,
-        table_params: dict,
-        params: dict,
-        variation_level: str,
-        ink_color: tuple,
-    ) -> Tuple[TableCodesGenerator, dict]:
-        """Build a TableCodesGenerator and pre-generate its code table."""
+    def _make_table_config(self, table_params: dict) -> TableCodesConfig:
+        """Build a TableCodesConfig from sampled table parameters."""
         ct = table_params["content_type"]
         num_sym = table_params.get("num_symbols", 0)
         words = self.db.get_table_words(num_sym) if ct == "words" and num_sym > 0 else None
 
-        config = TableCodesConfig(
+        return TableCodesConfig(
             content_type=ct,
             num_symbols=num_sym,
             words=words,
@@ -323,14 +316,6 @@ class DatasetGenerator:
             use_pair_grid=table_params.get("pair_grid", False),
             draw_header_line=table_params.get("draw_header_line", True),
         )
-        gen = TableCodesGenerator(
-            config=config,
-            font_size=table_params["font_size"],
-            spacing=params["spacing"],
-            variation_level=variation_level,
-            ink_color=ink_color,
-        )
-        return gen, gen.generate_code_table()
 
     @staticmethod
     def _transfer_annotations(

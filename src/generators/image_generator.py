@@ -478,6 +478,7 @@ class CipherImageGenerator:
         start_y: int,
         font_path: Optional[str] = None,
         use_variations: bool = True,
+        variation_level: str = "medium",
         track_annotations: bool = True,
         code_table: Optional[dict] = None,
         font_size: Optional[int] = None,
@@ -494,7 +495,7 @@ class CipherImageGenerator:
             config=table_config,
             font_size=actual_font_size,
             spacing=self.font_config.spacing,
-            variation_level="medium" if use_variations else "none",
+            variation_level=variation_level if use_variations else "none",
             ink_color=ink_color,
         )
 
