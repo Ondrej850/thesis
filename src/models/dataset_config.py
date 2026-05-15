@@ -28,6 +28,21 @@ class TableRangeConfig:
 
 
 @dataclass
+class CipherPairsRangeConfig:
+    """Randomisation ranges for the cipher pairs (column entries) block in a batch run."""
+    include: str = "always"                          # "always", "never", "random"
+    cipher_types: List[str] = field(default_factory=lambda: ["alphabet", "substitution", "bigram", "trigram", "dictionary", "nulls"])
+    key_types: List[str] = field(default_factory=lambda: ["number", "double_char"])
+    pair_formats: List[str] = field(default_factory=lambda: ["text_first", "number_first"])
+    num_entries_range: Tuple[int, int] = (10, 50)
+    font_size_range: Tuple[int, int] = (10, 20)
+    pair_spacings: List[str] = field(default_factory=lambda: ["tight", "normal", "high"])
+    column_divider: str = "random"                   # "always", "never", "random"
+    column_gap_range: Tuple[int, int] = (20, 50)
+    include_title: str = "never"                     # "always", "never", "random"
+
+
+@dataclass
 class DatasetConfig:
     """Configuration specifying randomisation ranges for batch dataset generation."""
 
@@ -45,12 +60,7 @@ class DatasetConfig:
     )
 
     # Column Pairs
-    include_column_pairs: str = "always"  # "always", "never", "random"
-    cipher_types: List[str] = field(default_factory=lambda: ["alphabet", "substitution", "bigram", "trigram", "dictionary", "nulls"])
-    key_types: List[str] = field(default_factory=lambda: ["number", "double_char"])
-    pair_formats: List[str] = field(default_factory=lambda: ["text_first", "number_first"])
-    num_entries_range: Tuple[int, int] = (10, 50)
-    cp_font_size_range: Tuple[int, int] = (10, 20)
+    cipher_pairs_config: CipherPairsRangeConfig = field(default_factory=CipherPairsRangeConfig)
 
     # Font
     fonts: List[str] = field(default_factory=lambda: ["Random"])
@@ -77,14 +87,6 @@ class DatasetConfig:
     table_row_spacing_range: Tuple[int, int] = (0, 6)
     table_pair_grid: str = "never"
     include_table_title: str = "never"
-
-    # Column pairs — new layout controls
-    pair_spacings: List[str] = field(default_factory=lambda: ["tight", "normal", "high"])
-    column_divider: str = "random"       # "always", "never", "random"
-    column_gap_range: Tuple[int, int] = (20, 50)
-
-    # Column pairs section title
-    include_cp_title: str = "never"      # "always", "never", "random"
 
     # Layout
     start_x_range: Tuple[int, int] = (0, 100)
@@ -141,8 +143,6 @@ class DatasetConfig:
 
     def sample(self) -> Dict[str, Any]:
         """Return a single concrete configuration sampled from the ranges."""
-        include_pairs = self._resolve_toggle(self.include_column_pairs)
-
         # Defects
         if self.defects_mode == "all":
             defects = list(self.defects_pool)
@@ -185,6 +185,9 @@ class DatasetConfig:
             else:
                 tables = []
 
+        cp = self.cipher_pairs_config
+        include_pairs = self._resolve_toggle(cp.include)
+
         return {
             # Paper
             "aging_level": random.randint(*self.aging_level_range),
@@ -192,15 +195,15 @@ class DatasetConfig:
 
             # Column pairs
             "include_column_pairs": include_pairs,
-            "cipher_type": random.choice(self.cipher_types),
-            "key_type": random.choice(self.key_types),
-            "pair_format": random.choice(self.pair_formats),
-            "num_entries": random.randint(*self.num_entries_range),
-            "cp_font_size": random.randint(*self.cp_font_size_range),
-            "include_cp_title": self._resolve_toggle(self.include_cp_title),
-            "pair_spacing": random.choice(self.pair_spacings),
-            "column_divider": self._resolve_toggle(self.column_divider),
-            "column_gap": random.randint(*self.column_gap_range),
+            "cipher_type": random.choice(cp.cipher_types),
+            "key_type": random.choice(cp.key_types),
+            "pair_format": random.choice(cp.pair_formats),
+            "num_entries": random.randint(*cp.num_entries_range),
+            "cp_font_size": random.randint(*cp.font_size_range),
+            "include_cp_title": self._resolve_toggle(cp.include_title),
+            "pair_spacing": random.choice(cp.pair_spacings),
+            "column_divider": self._resolve_toggle(cp.column_divider),
+            "column_gap": random.randint(*cp.column_gap_range),
 
             # Font
             "font_name": random.choice(self.fonts),

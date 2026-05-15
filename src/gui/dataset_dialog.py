@@ -10,7 +10,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 
-from src.models.dataset_config import DatasetConfig, TableRangeConfig
+from src.models.dataset_config import DatasetConfig, TableRangeConfig, CipherPairsRangeConfig
 from src.generators.dataset_generator import DatasetGenerator
 from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
@@ -420,16 +420,18 @@ class DatasetDialog(tk.Toplevel):
             aging_level_range=(self._aging_lo.get(), self._aging_hi.get()),
             defects_mode=self._defects_toggle.get(),
             # Column pairs
-            include_column_pairs=self._cp_toggle.get(),
-            cipher_types=self._checked(self._cipher_type_vars) or ["substitution"],
-            key_types=self._checked(self._key_type_vars) or ["number"],
-            pair_formats=self._checked(self._pair_fmt_vars) or ["text_first"],
-            num_entries_range=(self._entries_lo.get(), self._entries_hi.get()),
-            cp_font_size_range=(self._cp_fs_lo.get(), self._cp_fs_hi.get()),
-            include_cp_title=self._cp_title_toggle.get(),
-            pair_spacings=self._checked(self._pair_spacing_vars) or ["normal"],
-            column_divider=self._col_divider_toggle.get(),
-            column_gap_range=(self._col_gap_lo.get(), self._col_gap_hi.get()),
+            cipher_pairs_config=CipherPairsRangeConfig(
+                include=self._cp_toggle.get(),
+                cipher_types=self._checked(self._cipher_type_vars) or ["substitution"],
+                key_types=self._checked(self._key_type_vars) or ["number"],
+                pair_formats=self._checked(self._pair_fmt_vars) or ["text_first"],
+                num_entries_range=(self._entries_lo.get(), self._entries_hi.get()),
+                font_size_range=(self._cp_fs_lo.get(), self._cp_fs_hi.get()),
+                include_title=self._cp_title_toggle.get(),
+                pair_spacings=self._checked(self._pair_spacing_vars) or ["normal"],
+                column_divider=self._col_divider_toggle.get(),
+                column_gap_range=(self._col_gap_lo.get(), self._col_gap_hi.get()),
+            ),
             # Font
             fonts=self._checked(self._font_vars) or ["Random"],
             variation_levels=self._checked(self._var_level_vars) or ["medium"],
