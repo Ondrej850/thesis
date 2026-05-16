@@ -133,7 +133,7 @@ class DatasetGenerator:
                 font_path=font_path, use_variations=use_variations,
                 track_annotations=True, ink_color=ink_color,
                 right_margin=right_margin, bottom_margin=bottom_margin,
-                title_text=self.db.get_random_title(),
+                title_text=self.db.get_words("titles", 1)[0],
             )
             self._transfer_annotations(generator, coco_manager, image_id)
 
@@ -148,7 +148,7 @@ class DatasetGenerator:
                     font_path=font_path, use_variations=use_variations,
                     track_annotations=True, ink_color=ink_color,
                     right_margin=right_margin, bottom_margin=bottom_margin,
-                    title_text=self.db.get_random_title(),
+                    title_text=self.db.get_words("titles", 1)[0],
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
             if current_y >= bottom_limit:
@@ -180,7 +180,7 @@ class DatasetGenerator:
                     font_path=font_path, use_variations=use_variations,
                     track_annotations=True, ink_color=ink_color,
                     right_margin=right_margin, bottom_margin=bottom_margin,
-                    title_text=self.db.get_random_title(),
+                    title_text=self.db.get_words("titles", 1)[0],
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
             if current_y < bottom_limit:
@@ -231,7 +231,7 @@ class DatasetGenerator:
                 font_path=font_path, use_variations=use_variations,
                 track_annotations=False, ink_color=ink_color,
                 right_margin=right_margin, bottom_margin=bottom_margin,
-                title_text=self.db.get_random_title(),
+                title_text=self.db.get_words("titles", 1)[0],
             )
 
         for table_params in params.get("tables", []):

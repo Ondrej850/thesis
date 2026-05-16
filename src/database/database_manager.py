@@ -186,6 +186,7 @@ _TABLE_CODES_WORDS: List[str] = [
 ]
 
 _WORD_LISTS = {
+    "titles":       _TITLE_TEMPLATES,
     "substitution": _SUBSTITUTION_WORDS,
     "bigram":       COMMON_BIGRAMS,
     "trigram":      COMMON_TRIGRAMS,
@@ -200,10 +201,6 @@ class DatabaseManager:
 
     def __init__(self):
         self._data = {k: list(v) for k, v in _WORD_LISTS.items()}
-
-    def get_random_title(self) -> str:
-        """Return a random Latin document title."""
-        return random.choice(_TITLE_TEMPLATES)
 
     def get_words(self, cipher_type: str, n: int = 0) -> List[str]:
         """Return words for the given cipher type.
