@@ -205,11 +205,14 @@ class DatabaseManager:
         """Return a random Latin document title."""
         return random.choice(_TITLE_TEMPLATES)
 
-    def get_null_symbols(self) -> List[str]:
-        """Return the list of null/placeholder symbols."""
-        return list(self._data["nulls"])
+    def get_words(self, cipher_type: str, n: int = 0) -> List[str]:
+        """Return words for the given cipher type.
 
-    def get_cipher_keys(self, cipher_type: str) -> List[str]:
-        """Return all words for the given cipher type."""
-        return list(self._data.get(cipher_type, []))
+        n=0  → return the full list
+        n>0  → return a random sample of min(n, pool_size) items
+        """
+        pool = self._data.get(cipher_type, [])
+        if n > 0:
+            return random.sample(pool, min(n, len(pool)))
+        return list(pool)
 

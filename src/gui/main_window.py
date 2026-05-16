@@ -1340,7 +1340,7 @@ class CipherGeneratorGUI:
                             entries.append((letter, self._generate_key_value(cipher_type, key_type)))
                 else:
                     additional_needed = num_entries - cached_count
-                    words = self.db.get_cipher_keys(cipher_type)
+                    words = self.db.get_words(cipher_type)
                     if words:
                         if key_type == "double_char":
                             used_keys = {e[1] for e in entries}
@@ -1371,7 +1371,7 @@ class CipherGeneratorGUI:
             else:
                 entries = [(l, self._generate_key_value(cipher_type, key_type)) for l in letters]
         else:
-            words = self.db.get_cipher_keys(cipher_type)
+            words = self.db.get_words(cipher_type)
             if not words:
                 entries = [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
             elif key_type == "double_char":
@@ -1397,8 +1397,7 @@ class CipherGeneratorGUI:
         num_sym = panel.num_symbols_var.get() if content_type != "alphabet" else 0
         if content_type == "words":
             if panel.cached_words is None:
-                pool = self.db.get_cipher_keys("table_codes")
-                panel.cached_words = random.sample(pool, min(num_sym, len(pool))) if num_sym > 0 else []
+                panel.cached_words = self.db.get_words("table_codes", num_sym) if num_sym > 0 else []
             fetched_words = panel.cached_words
         else:
             panel.cached_words = None  # clear stale cache if user switched away from words
@@ -1470,7 +1469,7 @@ class CipherGeneratorGUI:
             'special_character' – random null symbol from database
         """
         if key_type == "special_character":
-            return random.choice(self.db.get_null_symbols())
+            return random.choice(self.db.get_words("nulls"))
         # double_char is handled at the batch level (_get_cipher_entries)
         return str(self._generate_key_number(cipher_type))
 

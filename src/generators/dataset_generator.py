@@ -315,11 +315,7 @@ class DatasetGenerator:
         """Build a TableCodesConfig from sampled table parameters."""
         ct = table_params["content_type"]
         num_sym = table_params.get("num_symbols", 0)
-        if ct == "words" and num_sym > 0:
-            pool = self.db.get_cipher_keys("table_codes")
-            words = random.sample(pool, min(num_sym, len(pool)))
-        else:
-            words = None
+        words = self.db.get_words("table_codes", num_sym) if ct == "words" and num_sym > 0 else None
 
         return TableCodesConfig(
             content_type=ct,
@@ -442,15 +438,15 @@ class DatasetGenerator:
                 keys = self._generate_unique_double_char_keys(len(letters))
                 return list(zip(letters, keys))
             if key_type == "special_character":
-                return [(l, random.choice(self.db.get_null_symbols())) for l in letters]
+                return [(l, random.choice(self.db.get_words("nulls"))) for l in letters]
             return [(l, str(_generate_key_number(cipher_type))) for l in letters]
 
-        words = self.db.get_cipher_keys(cipher_type)
+        words = self.db.get_words(cipher_type)
         if not words:
             return [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
         if key_type == "double_char":
             keys = self._generate_unique_double_char_keys(num_entries)
             return [(random.choice(words), keys[i]) for i in range(num_entries)]
         if key_type == "special_character":
-            return [(random.choice(words), random.choice(self.db.get_null_symbols())) for _ in range(num_entries)]
+            return [(random.choice(words), random.choice(self.db.get_words("nulls"))) for _ in range(num_entries)]
         return [(random.choice(words), str(_generate_key_number(cipher_type))) for _ in range(num_entries)]
