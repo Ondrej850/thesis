@@ -12,7 +12,7 @@ from PIL import Image
 
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
-from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
+from src.models.table_codes_config import TableCodesConfig
 from src.models.dataset_config import DatasetConfig
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.generators.image_generator import CipherImageGenerator
@@ -133,6 +133,7 @@ class DatasetGenerator:
                 font_path=font_path, use_variations=use_variations,
                 track_annotations=True, ink_color=ink_color,
                 right_margin=right_margin, bottom_margin=bottom_margin,
+                title_text=self.db.get_random_title(),
             )
             self._transfer_annotations(generator, coco_manager, image_id)
 
@@ -147,6 +148,7 @@ class DatasetGenerator:
                     font_path=font_path, use_variations=use_variations,
                     track_annotations=True, ink_color=ink_color,
                     right_margin=right_margin, bottom_margin=bottom_margin,
+                    title_text=self.db.get_random_title(),
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
             if current_y >= bottom_limit:
@@ -178,6 +180,7 @@ class DatasetGenerator:
                     font_path=font_path, use_variations=use_variations,
                     track_annotations=True, ink_color=ink_color,
                     right_margin=right_margin, bottom_margin=bottom_margin,
+                    title_text=self.db.get_random_title(),
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
             if current_y < bottom_limit:
@@ -228,6 +231,7 @@ class DatasetGenerator:
                 font_path=font_path, use_variations=use_variations,
                 track_annotations=False, ink_color=ink_color,
                 right_margin=right_margin, bottom_margin=bottom_margin,
+                title_text=self.db.get_random_title(),
             )
 
         for table_params in params.get("tables", []):
@@ -434,7 +438,7 @@ class DatasetGenerator:
                 keys = self._generate_unique_double_char_keys(len(letters))
                 return list(zip(letters, keys))
             if key_type == "special_character":
-                return [(l, random.choice(NULL_SYMBOLS)) for l in letters]
+                return [(l, random.choice(self.db.get_null_symbols())) for l in letters]
             return [(l, str(_generate_key_number(cipher_type))) for l in letters]
 
         words = self.db.get_cipher_keys(cipher_type)
@@ -444,5 +448,5 @@ class DatasetGenerator:
             keys = self._generate_unique_double_char_keys(num_entries)
             return [(random.choice(words), keys[i]) for i in range(num_entries)]
         if key_type == "special_character":
-            return [(random.choice(words), random.choice(NULL_SYMBOLS)) for _ in range(num_entries)]
+            return [(random.choice(words), random.choice(self.db.get_null_symbols())) for _ in range(num_entries)]
         return [(random.choice(words), str(_generate_key_number(cipher_type))) for _ in range(num_entries)]

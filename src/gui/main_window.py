@@ -12,7 +12,7 @@ import threading
 from typing import List, Tuple
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
-from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
+from src.models.table_codes_config import TableCodesConfig
 from src.constants import INK_COLOR_MAP, PAIR_SPACING_PX
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
@@ -472,7 +472,7 @@ class CipherGeneratorGUI:
         self._cp_title_random_btn = ttk.Button(
             frame, text="Random",
             command=lambda: self.cp_section_title_text.set(
-                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+                self.db.get_random_title()
             ),
             width=8,
         )
@@ -694,7 +694,7 @@ class CipherGeneratorGUI:
         panel.title_random_btn = ttk.Button(
             outer, text="Random",
             command=lambda p=panel: p.section_title_text.set(
-                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+                self.db.get_random_title()
             ),
             width=8,
         )
@@ -882,7 +882,7 @@ class CipherGeneratorGUI:
         self._include_title_random_btn = ttk.Button(
             frame, text="Random",
             command=lambda: self.include_title_text.set(
-                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+                self.db.get_random_title()
             ),
             width=8,
         )
@@ -1180,7 +1180,7 @@ class CipherGeneratorGUI:
 
             # ── Title / header (rendered first if enabled) ──────────────
             if include_title:
-                title_text = self.include_title_text.get().strip() or None
+                title_text = self.include_title_text.get().strip() or self.db.get_random_title()
                 current_y = generator.render_title(
                     img, start_x, current_y,
                     font_path=selected_font_path,
@@ -1198,7 +1198,7 @@ class CipherGeneratorGUI:
                 if not panel.include_var.get():
                     continue
                 if panel.section_title_var.get():
-                    t_text = panel.section_title_text.get().strip() or None
+                    t_text = panel.section_title_text.get().strip() or self.db.get_random_title()
                     current_y = generator.render_title(
                         img, start_x, current_y,
                         font_path=selected_font_path,
@@ -1231,7 +1231,7 @@ class CipherGeneratorGUI:
             # ── Column pairs (rendered below table, or from top if no table) ──
             if include_pairs:
                 if self.cp_section_title_var.get():
-                    title_text = self.cp_section_title_text.get().strip() or None
+                    title_text = self.cp_section_title_text.get().strip() or self.db.get_random_title()
                     current_y = generator.render_title(
                         img, start_x, current_y,
                         font_path=selected_font_path,
@@ -1466,10 +1466,10 @@ class CipherGeneratorGUI:
         key_type:
             'number'            – multi-digit number
             'double_char'       – two-character key (unique pool managed by caller)
-            'special_character' – random symbol from NULL_SYMBOLS
+            'special_character' – random null symbol from database
         """
         if key_type == "special_character":
-            return random.choice(NULL_SYMBOLS)
+            return random.choice(self.db.get_null_symbols())
         # double_char is handled at the batch level (_get_cipher_entries)
         return str(self._generate_key_number(cipher_type))
 

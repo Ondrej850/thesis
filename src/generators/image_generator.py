@@ -387,18 +387,6 @@ class CipherImageGenerator:
     # Title rendering
     # ------------------------------------------------------------------
 
-    TITLE_TEMPLATES = [
-        "Alphabetum Cifratum", "Cifra Nova", "Clavis Secreta",
-        "Tabula Cifrarum", "Liber Secretus", "Cifra Generalis",
-        "Alphabetum Secretum", "Cifra Diplomatica", "Clavis Alphabetica",
-        "Cifra Regia", "Tabula Secretorum", "Clavis Cifrae",
-        "Liber Cifrarum", "Tabula Nova", "Cifra Universalis",
-        "Clavis Generalis", "Alphabetum Novum", "Liber Clausus",
-        "Nomenclator", "Cifra", "Clavis", "Alphabetum",
-        "Nomenclatura", "Sigillum", "Tabula", "Secretum",
-        "Vocabularium", "Registrum",
-    ]
-
     def render_title(
         self,
         img: Image.Image,
@@ -419,7 +407,7 @@ class CipherImageGenerator:
 
         base_color = ink_color or (44, 36, 22)
         fs = title_font_size or int(self.font_config.font_size * 1.5)
-        text = title_text or random.choice(self.TITLE_TEMPLATES)
+        text = title_text or "Nomenclator"
         words = text.split()
         max_y = self.paper_config.height - bottom_margin
         x_limit = self.paper_config.width - right_margin

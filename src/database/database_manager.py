@@ -11,6 +11,22 @@ from src.models.table_codes_config import NULL_SYMBOLS
 # Seed data
 # ---------------------------------------------------------------------------
 
+_TITLE_TEMPLATES: List[str] = [
+    "Alphabetum Cifratum", "Cifra Nova", "Clavis Secreta",
+    "Tabula Cifrarum", "Liber Secretus", "Cifra Generalis",
+    "Alphabetum Secretum", "Cifra Diplomatica", "Clavis Alphabetica",
+    "Cifra Regia", "Tabula Secretorum", "Clavis Cifrae",
+    "Liber Cifrarum", "Tabula Nova", "Cifra Universalis",
+    "Clavis Generalis", "Alphabetum Novum", "Liber Clausus",
+    "Nomenclator", "Cifra", "Clavis", "Alphabetum",
+    "Nomenclatura", "Sigillum", "Tabula", "Secretum",
+    "Vocabularium", "Registrum",
+]
+
+# ---------------------------------------------------------------------------
+# Seed data
+# ---------------------------------------------------------------------------
+
 _SUBSTITUTION_WORDS: List[str] = [
     "Imperator", "Cardinal", "General", "Italia", "Franche",
     "Hispania", "Deutschland", "England", "Regis", "Polen",
@@ -163,6 +179,14 @@ class DatabaseManager:
 
     def __init__(self):
         self._data = {k: list(v) for k, v in _WORD_LISTS.items()}
+
+    def get_random_title(self) -> str:
+        """Return a random Latin document title."""
+        return random.choice(_TITLE_TEMPLATES)
+
+    def get_null_symbols(self) -> List[str]:
+        """Return the list of null/placeholder symbols."""
+        return list(self._data["nulls"])
 
     def get_cipher_keys(self, cipher_type: str) -> List[str]:
         """Return all words for the given cipher type."""
