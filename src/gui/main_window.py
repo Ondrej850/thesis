@@ -265,10 +265,18 @@ class CipherGeneratorGUI:
                            variable=var).grid(row=0, column=i, sticky=tk.W, padx=5)
 
         # Photo augmentation
-        ttk.Label(frame, text="Photo Augmentation:").grid(row=2, column=0, sticky=tk.W, pady=2)
-        self.augmentation_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(frame, text="Simulate scanning / photographing",
-                        variable=self.augmentation_var).grid(row=2, column=1, sticky=tk.W)
+        ttk.Label(frame, text="Augmentation:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        aug_frame = ttk.Frame(frame)
+        aug_frame.grid(row=2, column=1, columnspan=2, sticky=tk.W, pady=2)
+        self.aug_bleed_var = tk.BooleanVar(value=True)
+        self.aug_book_edges_var = tk.BooleanVar(value=True)
+        self.aug_other_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(aug_frame, text="Bleed-through",
+                        variable=self.aug_bleed_var).grid(row=0, column=0, sticky=tk.W, padx=5)
+        ttk.Checkbutton(aug_frame, text="Book / Scan edges",
+                        variable=self.aug_book_edges_var).grid(row=0, column=1, sticky=tk.W, padx=5)
+        ttk.Checkbutton(aug_frame, text="Other (noise, perspective, compression…)",
+                        variable=self.aug_other_var).grid(row=0, column=2, sticky=tk.W, padx=5)
 
         # Font selection
         ttk.Label(frame, text="Font:").grid(row=3, column=0, sticky=tk.W, pady=2)
@@ -970,7 +978,9 @@ class CipherGeneratorGUI:
         self.aging_var.trace_add('write', self._on_paper_config_change)
         for var in self.defect_vars.values():
             var.trace_add('write', self._on_paper_config_change)
-        self.augmentation_var.trace_add('write', self._on_paper_config_change)
+        self.aug_bleed_var.trace_add('write', self._on_paper_config_change)
+        self.aug_book_edges_var.trace_add('write', self._on_paper_config_change)
+        self.aug_other_var.trace_add('write', self._on_paper_config_change)
 
         # Cipher config listeners (content change - invalidate cache)
         self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
@@ -1250,8 +1260,12 @@ class CipherGeneratorGUI:
                 )
 
             # Store for saving — augment image and update annotations together
-            if self.augmentation_var.get():
-                img = self._augment_with_annotations(img, generator)
+            img = self._augment_with_annotations(
+                img, generator,
+                use_bleed_through=self.aug_bleed_var.get(),
+                use_book_edges=self.aug_book_edges_var.get(),
+                use_other=self.aug_other_var.get(),
+            )
             self.preview_image = img
 
             # Display preview
@@ -1478,7 +1492,13 @@ class CipherGeneratorGUI:
             return random.randint(100, 200)
 
     @staticmethod
-    def _augment_with_annotations(img: Image.Image, generator) -> Image.Image:
+    def _augment_with_annotations(
+        img: Image.Image,
+        generator,
+        use_bleed_through: bool = True,
+        use_book_edges: bool = True,
+        use_other: bool = True,
+    ) -> Image.Image:
         """Run augmentation and keep generator.coco_manager bboxes in sync.
 
         The Perspective transform warps pixel positions, so any annotation
@@ -1486,16 +1506,21 @@ class CipherGeneratorGUI:
         bbox ends up off-canvas (or below the visibility threshold) are
         dropped from the manager.
         """
+        aug_kwargs = dict(
+            use_bleed_through=use_bleed_through,
+            use_book_edges=use_book_edges,
+            use_other=use_other,
+        )
         coco = generator.coco_manager
         anns = coco.annotations
         if not anns:
-            return apply_photo_augmentation(img)
+            return apply_photo_augmentation(img, **aug_kwargs)
 
         bboxes = [list(a["bbox"]) for a in anns]
         labels = list(range(len(anns)))
 
         new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
-            img, bboxes=bboxes, labels=labels,
+            img, bboxes=bboxes, labels=labels, **aug_kwargs,
         )
 
         survived = {

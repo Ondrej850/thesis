@@ -218,6 +218,9 @@ def apply_photo_augmentation(
     bboxes=None,
     labels=None,
     back_image: Image.Image | None = None,
+    use_bleed_through: bool = True,
+    use_book_edges: bool = True,
+    use_other: bool = True,
 ):
     """Apply photo-realistic augmentation to a generated document PIL image.
 
@@ -228,43 +231,45 @@ def apply_photo_augmentation(
       3. Optional vignette
       4. Albumentations transforms (aging, noise, blur, perspective, compression)
 
+    use_bleed_through — gates step 1
+    use_book_edges    — gates book/scanner edge gradients (step 2, non-surface path)
+    use_other         — gates surface capture, vignette, and albumentations pipeline
+
     If *bboxes* is provided (list of [x, y, w, h] in COCO format) spatial
     transforms are applied to the bboxes too.  *labels* is a parallel list
     of identifiers so the caller can map surviving bboxes back to annotations.
-
-    Pass *back_image* to supply a pre-rendered page as the bleed-through source
-    instead of the synthetic stroke-based fallback.
-
-    Returns:
-        Image.Image                       — when bboxes is None
-        (Image.Image, bboxes, labels)     — otherwise
     """
-    if random.random() < 0.50:
+    if use_bleed_through and random.random() < 0.50:
         pil_img = apply_bleed_through(pil_img, back_image=back_image)
 
     img = np.array(pil_img.convert("RGB"))
+    bboxes_in = list(bboxes) if bboxes is not None else []
+    labels_in = list(labels) if labels is not None else []
 
-    use_surface = random.random() < 0.40
-
-    if use_surface:
-        bboxes_in = list(bboxes) if bboxes is not None else []
-        labels_in = list(labels) if labels is not None else []
-        if bboxes is not None:
-            img, bboxes_in, labels_in = add_surface_capture(img, bboxes_in, labels_in)
-        else:
-            img = add_surface_capture(img)
-    else:
+    if use_other:
+        use_surface = random.random() < 0.40
+        if use_surface:
+            if bboxes is not None:
+                img, bboxes_in, labels_in = add_surface_capture(img, bboxes_in, labels_in)
+            else:
+                img = add_surface_capture(img)
+        elif use_book_edges:
+            img = add_book_edges(img)
+    elif use_book_edges:
         img = add_book_edges(img)
-        bboxes_in = list(bboxes) if bboxes is not None else []
-        labels_in = list(labels) if labels is not None else []
 
-    if random.random() < 0.40:
+    if use_other and random.random() < 0.40:
         img = _add_vignette(img, random.uniform(0.16, 0.50))
 
-    result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
-    out_img = Image.fromarray(result["image"])
-    out_bboxes = list(result["bboxes"])
-    out_labels = list(result["labels"])
+    if use_other:
+        result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
+        out_img = Image.fromarray(result["image"])
+        out_bboxes = list(result["bboxes"])
+        out_labels = list(result["labels"])
+    else:
+        out_img = Image.fromarray(img)
+        out_bboxes = bboxes_in
+        out_labels = labels_in
 
     if bboxes is None:
         return out_img

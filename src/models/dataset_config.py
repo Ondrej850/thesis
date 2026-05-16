@@ -58,7 +58,9 @@ class DatasetConfig:
     defects_pool: List[str] = field(
         default_factory=lambda: ["holes", "tears"]
     )
-    use_augmentation: str = "always"  # "always", "never", "random"
+    use_bleed_through: str = "always"       # "always", "never", "random"
+    use_book_edges: str = "always"          # "always", "never", "random"
+    use_other_augmentation: str = "always"  # "always", "never", "random"
 
     # Column Pairs
     cipher_pairs_config: CipherPairsRangeConfig = field(default_factory=CipherPairsRangeConfig)
@@ -193,7 +195,9 @@ class DatasetConfig:
             # Paper
             "aging_level": random.randint(*self.aging_level_range),
             "defects": defects,
-            "use_augmentation": self._resolve_toggle(self.use_augmentation),
+            "use_bleed_through": self._resolve_toggle(self.use_bleed_through),
+            "use_book_edges": self._resolve_toggle(self.use_book_edges),
+            "use_other_augmentation": self._resolve_toggle(self.use_other_augmentation),
 
             # Column pairs
             "include_column_pairs": include_pairs,

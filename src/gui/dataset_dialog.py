@@ -200,7 +200,9 @@ class DatasetDialog(tk.Toplevel):
         row = self._add_section_label(row, "Paper")
         self._aging_lo, self._aging_hi, row = self._add_range(row, "Aging Level:", 0, 100, 20, 80)
         self._defects_toggle, row = self._add_toggle(row, "Defects:", "random")
-        self._augmentation_toggle, row = self._add_toggle(row, "Photo Augmentation:", "always")
+        self._aug_bleed_toggle, row = self._add_toggle(row, "Bleed-through:", "always")
+        self._aug_book_edges_toggle, row = self._add_toggle(row, "Book/Scan Edges:", "always")
+        self._aug_other_toggle, row = self._add_toggle(row, "Other Augmentation:", "always")
         font_names = ["Random"] + self.font_manager.get_all_font_names()
         self._font_vars, row = self._add_checkboxes(row, "Fonts:", font_names, defaults=["Random"])
         self._var_level_vars, row = self._add_checkboxes(row, "Variation Levels:", ALL_VARIATION_LEVELS,
@@ -420,7 +422,9 @@ class DatasetDialog(tk.Toplevel):
             # Paper
             aging_level_range=(self._aging_lo.get(), self._aging_hi.get()),
             defects_mode=self._defects_toggle.get(),
-            use_augmentation=self._augmentation_toggle.get(),
+            use_bleed_through=self._aug_bleed_toggle.get(),
+            use_book_edges=self._aug_book_edges_toggle.get(),
+            use_other_augmentation=self._aug_other_toggle.get(),
             # Column pairs
             cipher_pairs_config=CipherPairsRangeConfig(
                 include=self._cp_toggle.get(),

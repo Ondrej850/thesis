@@ -199,8 +199,12 @@ class DatasetGenerator:
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
 
-        if params.get("use_augmentation", True):
-            img = self._augment_and_update_annotations(img, image_id, coco_manager)
+        img = self._augment_and_update_annotations(
+            img, image_id, coco_manager,
+            use_bleed_through=params.get("use_bleed_through", True),
+            use_book_edges=params.get("use_book_edges", True),
+            use_other=params.get("use_other_augmentation", True),
+        )
         img.save(os.path.join(images_dir, filename))
 
     def _render_content_image(self, params: dict) -> Image.Image:
@@ -276,8 +280,12 @@ class DatasetGenerator:
         back_image = self._render_content_image(self.config.sample())
         back_image = back_image.transpose(Image.FLIP_LEFT_RIGHT)
 
-        if params.get("use_augmentation", True):
-            img = apply_photo_augmentation(img, back_image=back_image)
+        img = apply_photo_augmentation(
+            img, back_image=back_image,
+            use_bleed_through=params.get("use_bleed_through", True),
+            use_book_edges=params.get("use_book_edges", True),
+            use_other=params.get("use_other_augmentation", True),
+        )
         img.save(os.path.join(images_dir, f"bg_{index:04d}.png"))
 
     # ------------------------------------------------------------------
@@ -342,6 +350,9 @@ class DatasetGenerator:
         img: Image.Image,
         image_id: int,
         coco_manager: COCOAnnotationManager,
+        use_bleed_through: bool = True,
+        use_book_edges: bool = True,
+        use_other: bool = True,
     ) -> Image.Image:
         """Augment image and update COCO bboxes to match spatial transforms.
 
@@ -350,15 +361,21 @@ class DatasetGenerator:
         owned = [(i, ann) for i, ann in enumerate(coco_manager.annotations)
                  if ann.get("image_id") == image_id]
 
+        aug_kwargs = dict(
+            use_bleed_through=use_bleed_through,
+            use_book_edges=use_book_edges,
+            use_other=use_other,
+        )
+
         if not owned:
-            return apply_photo_augmentation(img)
+            return apply_photo_augmentation(img, **aug_kwargs)
 
         bboxes = [list(ann["bbox"]) for _, ann in owned]
         labels = [i for i, _ in owned]
         orig_dims = {i: (ann["bbox"][2], ann["bbox"][3]) for i, ann in owned}
 
         new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
-            img, bboxes=bboxes, labels=labels,
+            img, bboxes=bboxes, labels=labels, **aug_kwargs,
         )
 
         _DIM_THRESHOLD = 0.70
