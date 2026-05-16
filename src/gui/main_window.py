@@ -1262,9 +1262,9 @@ class CipherGeneratorGUI:
             # Store for saving — augment image and update annotations together
             img = self._augment_with_annotations(
                 img, generator,
-                use_bleed_through=self.aug_bleed_var.get(),
-                use_book_edges=self.aug_book_edges_var.get(),
-                use_other=self.aug_other_var.get(),
+                bleed_through="always" if self.aug_bleed_var.get() else "never",
+                book_edges="always" if self.aug_book_edges_var.get() else "never",
+                other="always" if self.aug_other_var.get() else "never",
             )
             self.preview_image = img
 
@@ -1495,9 +1495,9 @@ class CipherGeneratorGUI:
     def _augment_with_annotations(
         img: Image.Image,
         generator,
-        use_bleed_through: bool = True,
-        use_book_edges: bool = True,
-        use_other: bool = True,
+        bleed_through: str = "random",
+        book_edges: str = "random",
+        other: str = "random",
     ) -> Image.Image:
         """Run augmentation and keep generator.coco_manager bboxes in sync.
 
@@ -1507,9 +1507,9 @@ class CipherGeneratorGUI:
         dropped from the manager.
         """
         aug_kwargs = dict(
-            use_bleed_through=use_bleed_through,
-            use_book_edges=use_book_edges,
-            use_other=use_other,
+            bleed_through=bleed_through,
+            book_edges=book_edges,
+            other=other,
         )
         coco = generator.coco_manager
         anns = coco.annotations

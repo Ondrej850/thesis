@@ -201,9 +201,9 @@ class DatasetGenerator:
 
         img = self._augment_and_update_annotations(
             img, image_id, coco_manager,
-            use_bleed_through=params.get("use_bleed_through", True),
-            use_book_edges=params.get("use_book_edges", True),
-            use_other=params.get("use_other_augmentation", True),
+            bleed_through=params.get("bleed_through", "random"),
+            book_edges=params.get("book_edges", "random"),
+            other=params.get("other", "random"),
         )
         img.save(os.path.join(images_dir, filename))
 
@@ -282,9 +282,9 @@ class DatasetGenerator:
 
         img = apply_photo_augmentation(
             img, back_image=back_image,
-            use_bleed_through=params.get("use_bleed_through", True),
-            use_book_edges=params.get("use_book_edges", True),
-            use_other=params.get("use_other_augmentation", True),
+            bleed_through=params.get("bleed_through", "random"),
+            book_edges=params.get("book_edges", "random"),
+            other=params.get("other", "random"),
         )
         img.save(os.path.join(images_dir, f"bg_{index:04d}.png"))
 
@@ -350,9 +350,9 @@ class DatasetGenerator:
         img: Image.Image,
         image_id: int,
         coco_manager: COCOAnnotationManager,
-        use_bleed_through: bool = True,
-        use_book_edges: bool = True,
-        use_other: bool = True,
+        bleed_through: str = "random",
+        book_edges: str = "random",
+        other: str = "random",
     ) -> Image.Image:
         """Augment image and update COCO bboxes to match spatial transforms.
 
@@ -362,9 +362,9 @@ class DatasetGenerator:
                  if ann.get("image_id") == image_id]
 
         aug_kwargs = dict(
-            use_bleed_through=use_bleed_through,
-            use_book_edges=use_book_edges,
-            use_other=use_other,
+            bleed_through=bleed_through,
+            book_edges=book_edges,
+            other=other,
         )
 
         if not owned:

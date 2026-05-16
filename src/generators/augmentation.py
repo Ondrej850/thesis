@@ -218,50 +218,46 @@ def apply_photo_augmentation(
     bboxes=None,
     labels=None,
     back_image: Image.Image | None = None,
-    use_bleed_through: bool = True,
-    use_book_edges: bool = True,
-    use_other: bool = True,
+    bleed_through: str = "random",   # "always", "never", "random"
+    book_edges: str = "random",      # "always", "never", "random"
+    other: str = "random",           # "always", "never", "random"
 ):
     """Apply photo-realistic augmentation to a generated document PIL image.
 
-    Pipeline:
-      1. Optional bleed-through (ink ghost from reverse side)
-      2a. Book/scanner gradient edges  OR
-      2b. Surface-capture (shrink + rotate onto plain background) — mutually exclusive, ~40% surface
-      3. Optional vignette
-      4. Albumentations transforms (aging, noise, blur, perspective, compression)
-
-    use_bleed_through — gates step 1
-    use_book_edges    — gates book/scanner edge gradients (step 2, non-surface path)
-    use_other         — gates surface capture, vignette, and albumentations pipeline
-
-    If *bboxes* is provided (list of [x, y, w, h] in COCO format) spatial
-    transforms are applied to the bboxes too.  *labels* is a parallel list
-    of identifiers so the caller can map surviving bboxes back to annotations.
+    bleed_through — "always": force bleed-through; "random": 50% chance; "never": skip
+    book_edges    — "always"/"random": apply when surface capture does not trigger; "never": skip
+    other         — gates surface capture, vignette, and albumentations pipeline
+                    "always": vignette always + albumentations always + 40% surface
+                    "random": 40% vignette + albumentations always + 40% surface
+                    "never":  skip all three
     """
-    if use_bleed_through and random.random() < 0.50:
+    # 1. Bleed-through
+    if bleed_through == "always" or (bleed_through == "random" and random.random() < 0.50):
         pil_img = apply_bleed_through(pil_img, back_image=back_image)
 
     img = np.array(pil_img.convert("RGB"))
     bboxes_in = list(bboxes) if bboxes is not None else []
     labels_in = list(labels) if labels is not None else []
 
-    if use_other:
+    # 2. Surface capture (part of "other") OR book edges — mutually exclusive
+    if other != "never":
         use_surface = random.random() < 0.40
         if use_surface:
             if bboxes is not None:
                 img, bboxes_in, labels_in = add_surface_capture(img, bboxes_in, labels_in)
             else:
                 img = add_surface_capture(img)
-        elif use_book_edges:
+        elif book_edges != "never":
             img = add_book_edges(img)
-    elif use_book_edges:
+    elif book_edges != "never":
         img = add_book_edges(img)
 
-    if use_other and random.random() < 0.40:
+    # 3. Vignette (part of "other")
+    if other == "always" or (other == "random" and random.random() < 0.40):
         img = _add_vignette(img, random.uniform(0.16, 0.50))
 
-    if use_other:
+    # 4. Albumentations pipeline (part of "other")
+    if other != "never":
         result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
         out_img = Image.fromarray(result["image"])
         out_bboxes = list(result["bboxes"])

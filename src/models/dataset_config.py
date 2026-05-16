@@ -195,9 +195,9 @@ class DatasetConfig:
             # Paper
             "aging_level": random.randint(*self.aging_level_range),
             "defects": defects,
-            "use_bleed_through": self._resolve_toggle(self.use_bleed_through),
-            "use_book_edges": self._resolve_toggle(self.use_book_edges),
-            "use_other_augmentation": self._resolve_toggle(self.use_other_augmentation),
+            "bleed_through": self.use_bleed_through,
+            "book_edges": self.use_book_edges,
+            "other": self.use_other_augmentation,
 
             # Column pairs
             "include_column_pairs": include_pairs,
