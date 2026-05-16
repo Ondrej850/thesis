@@ -87,16 +87,10 @@ class CipherImageGenerator:
                 overlay_draw.ellipse([x, y, x + size, y + size], fill=(*color, alpha))
             img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
 
-        if 'stains' in self.paper_config.defects:
-            self._add_stains(img, int(10 * aging))
-        if 'burns' in self.paper_config.defects:
-            self._add_burns(img, int(5 * aging))
         if 'holes' in self.paper_config.defects:
-            self._add_holes(img, int(3 * aging))
+            self._add_holes(img, int(10 * aging))
         if 'tears' in self.paper_config.defects:
             self._add_tears(img, int(5 * aging))
-        if 'wrinkled_edges' in self.paper_config.defects:
-            self._add_wrinkled_edges(img)
 
         return img.filter(ImageFilter.GaussianBlur(radius=0.5))
 
@@ -147,9 +141,11 @@ class CipherImageGenerator:
     def _add_holes(self, img: Image.Image, count: int):
         draw = ImageDraw.Draw(img, 'RGBA')
         for _ in range(count):
-            x = random.randint(50, img.width - 50)
-            y = random.randint(50, img.height - 50)
-            size = random.randint(5, 15)
+            x = random.randint(30, img.width - 30)
+            y = random.randint(30, img.height - 30)
+            size = random.randint(4, 28)
+            # Shadow rim to make holes look physical
+            draw.ellipse([x - 2, y - 2, x + size + 2, y + size + 2], fill=(160, 140, 110, 80))
             draw.ellipse([x, y, x + size, y + size], fill=(255, 255, 255, 255))
 
     def _add_tears(self, img: Image.Image, count: int):

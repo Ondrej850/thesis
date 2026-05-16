@@ -17,7 +17,7 @@ from src.database.font_manager import FontManager
 
 
 # Reusable constants
-ALL_DEFECTS = ["wrinkled_edges", "burns", "stains", "holes", "tears", "yellowing"]
+ALL_DEFECTS = ["holes", "tears"]
 ALL_CIPHER_TYPES = ["alphabet", "substitution", "bigram", "trigram", "dictionary", "nulls"]
 ALL_KEY_TYPES = ["number", "double_char", "special_character"]
 ALL_VARIATION_LEVELS = ["none", "low", "medium", "high"]
@@ -200,6 +200,7 @@ class DatasetDialog(tk.Toplevel):
         row = self._add_section_label(row, "Paper")
         self._aging_lo, self._aging_hi, row = self._add_range(row, "Aging Level:", 0, 100, 20, 80)
         self._defects_toggle, row = self._add_toggle(row, "Defects:", "random")
+        self._augmentation_toggle, row = self._add_toggle(row, "Photo Augmentation:", "always")
         font_names = ["Random"] + self.font_manager.get_all_font_names()
         self._font_vars, row = self._add_checkboxes(row, "Fonts:", font_names, defaults=["Random"])
         self._var_level_vars, row = self._add_checkboxes(row, "Variation Levels:", ALL_VARIATION_LEVELS,
@@ -419,6 +420,7 @@ class DatasetDialog(tk.Toplevel):
             # Paper
             aging_level_range=(self._aging_lo.get(), self._aging_hi.get()),
             defects_mode=self._defects_toggle.get(),
+            use_augmentation=self._augmentation_toggle.get(),
             # Column pairs
             cipher_pairs_config=CipherPairsRangeConfig(
                 include=self._cp_toggle.get(),

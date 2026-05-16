@@ -199,7 +199,8 @@ class DatasetGenerator:
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
 
-        img = self._augment_and_update_annotations(img, image_id, coco_manager)
+        if params.get("use_augmentation", True):
+            img = self._augment_and_update_annotations(img, image_id, coco_manager)
         img.save(os.path.join(images_dir, filename))
 
     def _render_content_image(self, params: dict) -> Image.Image:
@@ -275,7 +276,8 @@ class DatasetGenerator:
         back_image = self._render_content_image(self.config.sample())
         back_image = back_image.transpose(Image.FLIP_LEFT_RIGHT)
 
-        img = apply_photo_augmentation(img, back_image=back_image)
+        if params.get("use_augmentation", True):
+            img = apply_photo_augmentation(img, back_image=back_image)
         img.save(os.path.join(images_dir, f"bg_{index:04d}.png"))
 
     # ------------------------------------------------------------------

@@ -257,15 +257,21 @@ class CipherGeneratorGUI:
         defects_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=2)
 
         self.defect_vars = {}
-        defects = ['wrinkled_edges', 'burns', 'stains', 'holes', 'tears', 'yellowing']
+        defects = ['holes', 'tears']
         for i, defect in enumerate(defects):
             var = tk.BooleanVar(value=True)
             self.defect_vars[defect] = var
             ttk.Checkbutton(defects_frame, text=defect.replace('_', ' ').title(),
-                           variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=5)
+                           variable=var).grid(row=0, column=i, sticky=tk.W, padx=5)
+
+        # Photo augmentation
+        ttk.Label(frame, text="Photo Augmentation:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        self.augmentation_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(frame, text="Simulate scanning / photographing",
+                        variable=self.augmentation_var).grid(row=2, column=1, sticky=tk.W)
 
         # Font selection
-        ttk.Label(frame, text="Font:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Font:").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.font_selection_var = tk.StringVar(value="Random")
 
         font_choices = ["Random"] + self.font_manager.get_all_font_names()
@@ -274,17 +280,17 @@ class CipherGeneratorGUI:
 
         font_combo = ttk.Combobox(frame, textvariable=self.font_selection_var,
                                   values=font_choices, state='readonly', width=25)
-        font_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
+        font_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Variation Level
-        ttk.Label(frame, text="Variation Level of Text:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Variation Level of Text:").grid(row=4, column=0, sticky=tk.W, pady=2)
         self.variation_level_var = tk.StringVar(value="medium")
         variation_combo = ttk.Combobox(frame, textvariable=self.variation_level_var,
                                        values=['none', 'low', 'medium', 'high'],
                                        state='readonly', width=25)
-        variation_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
+        variation_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
         ttk.Label(frame, text="(Controls character size, position, rotation)",
-                  font=('TkDefaultFont', 8), foreground='gray').grid(row=3, column=2, sticky=tk.W, padx=5)
+                  font=('TkDefaultFont', 8), foreground='gray').grid(row=4, column=2, sticky=tk.W, padx=5)
 
     def setup_cipher_config(self, parent):
         """Setup column-pairs cipher configuration section."""
@@ -964,6 +970,7 @@ class CipherGeneratorGUI:
         self.aging_var.trace_add('write', self._on_paper_config_change)
         for var in self.defect_vars.values():
             var.trace_add('write', self._on_paper_config_change)
+        self.augmentation_var.trace_add('write', self._on_paper_config_change)
 
         # Cipher config listeners (content change - invalidate cache)
         self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
@@ -1243,7 +1250,8 @@ class CipherGeneratorGUI:
                 )
 
             # Store for saving — augment image and update annotations together
-            img = self._augment_with_annotations(img, generator)
+            if self.augmentation_var.get():
+                img = self._augment_with_annotations(img, generator)
             self.preview_image = img
 
             # Display preview

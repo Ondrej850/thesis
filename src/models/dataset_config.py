@@ -56,8 +56,9 @@ class DatasetConfig:
     aging_level_range: Tuple[int, int] = (20, 80)
     defects_mode: str = "random"  # "random", "all", "none"
     defects_pool: List[str] = field(
-        default_factory=lambda: ["wrinkled_edges", "burns", "stains", "holes", "tears", "yellowing"]
+        default_factory=lambda: ["holes", "tears"]
     )
+    use_augmentation: str = "always"  # "always", "never", "random"
 
     # Column Pairs
     cipher_pairs_config: CipherPairsRangeConfig = field(default_factory=CipherPairsRangeConfig)
@@ -192,6 +193,7 @@ class DatasetConfig:
             # Paper
             "aging_level": random.randint(*self.aging_level_range),
             "defects": defects,
+            "use_augmentation": self._resolve_toggle(self.use_augmentation),
 
             # Column pairs
             "include_column_pairs": include_pairs,
