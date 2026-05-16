@@ -5,7 +5,38 @@ In-memory data store for cipher data.
 import random
 from typing import List
 
-from src.models.table_codes_config import NULL_SYMBOLS
+# ---------------------------------------------------------------------------
+# Shared linguistic constants — used by both DatabaseManager and TableCodesConfig
+# ---------------------------------------------------------------------------
+
+# Common English bigrams ordered by frequency
+COMMON_BIGRAMS: List[str] = [
+    'TH', 'HE', 'IN', 'ER', 'AN', 'RE', 'ON', 'EN',
+    'AT', 'ES', 'ED', 'IS', 'IT', 'AL', 'AR', 'ST',
+    'TO', 'NT', 'NG', 'SE', 'HA', 'AS', 'OU', 'IO',
+    'LE', 'VE', 'CO', 'ME', 'DE', 'HI', 'RI', 'RO',
+]
+
+# Common English trigrams ordered by frequency
+COMMON_TRIGRAMS: List[str] = [
+    'THE', 'AND', 'ING', 'ENT', 'ION', 'HER', 'FOR', 'THA',
+    'NTH', 'INT', 'ERE', 'TIO', 'TER', 'EST', 'ERS', 'HAT',
+    'HIS', 'ITH', 'VER', 'ATE', 'ALL', 'NOT', 'ARE', 'WAS',
+    'ONE', 'OUT', 'MAN', 'BUT', 'OFT', 'ETH', 'STH', 'OUR',
+]
+
+# Null symbols used as decorative placeholders.
+# All characters are from Basic Latin (U+0020-U+007E) or Latin-1 Supplement
+# (U+00A1-U+00FF) — ranges covered by virtually every TTF font.
+NULL_SYMBOLS: List[str] = [
+    # ASCII special characters (Basic Latin — render in every font)
+    '!', '#', '$', '%', '&', '*', '+', '=', '?', '@',
+    '^', '~', '{', '}', '[', ']', '|', '/', '<', '>',
+    # Latin-1 Supplement — render in virtually every TTF font
+    '¡', '¢', '£', '¤', '¥', '¦', '§', '©', '®', '°',
+    '±', '²', '³', 'µ', '¶', '·', '¼', '½', '¾', '¿',
+    '×', '÷',
+]
 
 # ---------------------------------------------------------------------------
 # Seed data
@@ -33,16 +64,6 @@ _SUBSTITUTION_WORDS: List[str] = [
     "Behem", "Dux", "Rex", "Princeps", "Francesco",
     "Austria", "Bavaria", "Saxonia", "Prussia", "Venetia",
     "Milano", "Firenze", "Roma", "Napoli", "Genova",
-]
-
-_BIGRAM_WORDS: List[str] = [
-    "ab", "in", "de", "et", "ad", "ex", "co", "on", "er", "an",
-    "re", "te", "st", "en", "or", "ti", "ar", "se", "it", "al",
-]
-
-_TRIGRAM_WORDS: List[str] = [
-    "rex", "dux", "qui", "est", "per", "con", "ent", "ter",
-    "tio", "pro", "res", "rum", "tur", "unt", "and", "ati",
 ]
 
 _DICTIONARY_WORDS: List[str] = [
@@ -166,8 +187,8 @@ _TABLE_CODES_WORDS: List[str] = [
 
 _WORD_LISTS = {
     "substitution": _SUBSTITUTION_WORDS,
-    "bigram":       _BIGRAM_WORDS,
-    "trigram":      _TRIGRAM_WORDS,
+    "bigram":       COMMON_BIGRAMS,
+    "trigram":      COMMON_TRIGRAMS,
     "dictionary":   _DICTIONARY_WORDS,
     "nulls":        list(NULL_SYMBOLS),
     "table_codes":  _TABLE_CODES_WORDS,
