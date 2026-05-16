@@ -254,7 +254,7 @@ def apply_photo_augmentation(
 
     # 3. Vignette (part of "other")
     if other == "always" or (other == "random" and random.random() < 0.40):
-        img = _add_vignette(img, random.uniform(0.16, 0.50))
+        img = _add_vignette(img, random.uniform(0.08, 0.25))
 
     # 4. Albumentations pipeline (part of "other")
     if other != "never":
