@@ -140,7 +140,7 @@ class CipherImageGenerator:
         for _ in range(count):
             x = random.randint(0, img.width)
             y = random.randint(0, img.height)
-            size = random.randint(4, 15)
+            size = random.randint(4, 10)
             color = random.choice(ink_colors)
             alpha = random.randint(180, 240)
             draw.ellipse([x, y, x + size, y + size], fill=(*color, alpha))
