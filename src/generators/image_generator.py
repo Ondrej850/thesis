@@ -143,7 +143,7 @@ class CipherImageGenerator:
         for _ in range(count):
             x = random.randint(30, img.width - 30)
             y = random.randint(30, img.height - 30)
-            size = random.randint(4, 28)
+            size = random.randint(4, 15)
             # Shadow rim to make holes look physical
             draw.ellipse([x - 2, y - 2, x + size + 2, y + size + 2], fill=(160, 140, 110, 80))
             draw.ellipse([x, y, x + size, y + size], fill=(255, 255, 255, 255))
