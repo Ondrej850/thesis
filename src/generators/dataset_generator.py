@@ -315,7 +315,11 @@ class DatasetGenerator:
         """Build a TableCodesConfig from sampled table parameters."""
         ct = table_params["content_type"]
         num_sym = table_params.get("num_symbols", 0)
-        words = self.db.get_table_words(num_sym) if ct == "words" and num_sym > 0 else None
+        if ct == "words" and num_sym > 0:
+            pool = self.db.get_cipher_keys("table_codes")
+            words = random.sample(pool, min(num_sym, len(pool)))
+        else:
+            words = None
 
         return TableCodesConfig(
             content_type=ct,

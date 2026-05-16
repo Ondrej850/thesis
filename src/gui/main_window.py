@@ -1397,7 +1397,8 @@ class CipherGeneratorGUI:
         num_sym = panel.num_symbols_var.get() if content_type != "alphabet" else 0
         if content_type == "words":
             if panel.cached_words is None:
-                panel.cached_words = self.db.get_table_words(num_sym) if num_sym > 0 else []
+                pool = self.db.get_cipher_keys("table_codes")
+                panel.cached_words = random.sample(pool, min(num_sym, len(pool))) if num_sym > 0 else []
             fetched_words = panel.cached_words
         else:
             panel.cached_words = None  # clear stale cache if user switched away from words

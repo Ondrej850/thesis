@@ -213,7 +213,3 @@ class DatabaseManager:
         """Return all words for the given cipher type."""
         return list(self._data.get(cipher_type, []))
 
-    def get_table_words(self, n: int) -> List[str]:
-        """Return n randomly sampled words from the table-codes word pool."""
-        pool = self._data["table_codes"]
-        return random.sample(pool, min(n, len(pool)))
