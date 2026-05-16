@@ -93,6 +93,8 @@ class CipherImageGenerator:
             self._add_holes(img, int(10 * aging))
         if 'tears' in self.paper_config.defects:
             self._add_tears(img, int(5 * aging))
+        if 'ink_drops' in self.paper_config.defects:
+            self._add_ink_drops(img, int(8 * aging))
 
         return img.filter(ImageFilter.GaussianBlur(radius=0.5))
 
@@ -131,6 +133,17 @@ class CipherImageGenerator:
             color = random.choice(['#8B7355', '#A0826D', '#6B5D4F'])
             alpha = random.randint(30, 80)
             draw.ellipse([x, y, x + size, y + size], fill=(*self._hex_to_rgb(color), alpha))
+
+    def _add_ink_drops(self, img: Image.Image, count: int):
+        draw = ImageDraw.Draw(img, 'RGBA')
+        ink_colors = [(15, 10, 10), (35, 30, 50), (44, 36, 22)]
+        for _ in range(count):
+            x = random.randint(0, img.width)
+            y = random.randint(0, img.height)
+            size = random.randint(15, 40)
+            color = random.choice(ink_colors)
+            alpha = random.randint(120, 200)
+            draw.ellipse([x, y, x + size, y + size], fill=(*color, alpha))
 
     def _add_burns(self, img: Image.Image, count: int):
         draw = ImageDraw.Draw(img, 'RGBA')

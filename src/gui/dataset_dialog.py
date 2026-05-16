@@ -17,7 +17,7 @@ from src.database.font_manager import FontManager
 
 
 # Reusable constants
-ALL_DEFECTS = ["stains", "holes", "tears"]
+ALL_DEFECTS = ["stains", "holes", "tears", "ink_drops"]
 ALL_CIPHER_TYPES = ["alphabet", "substitution", "bigram", "trigram", "dictionary", "nulls"]
 ALL_KEY_TYPES = ["number", "double_char", "special_character"]
 ALL_VARIATION_LEVELS = ["none", "low", "medium", "high"]

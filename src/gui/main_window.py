@@ -257,7 +257,7 @@ class CipherGeneratorGUI:
         defects_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=2)
 
         self.defect_vars = {}
-        defects = ['stains', 'holes', 'tears']
+        defects = ['stains', 'holes', 'tears', 'ink_drops']
         for i, defect in enumerate(defects):
             var = tk.BooleanVar(value=True)
             self.defect_vars[defect] = var
