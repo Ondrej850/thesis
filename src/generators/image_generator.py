@@ -87,6 +87,8 @@ class CipherImageGenerator:
                 overlay_draw.ellipse([x, y, x + size, y + size], fill=(*color, alpha))
             img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
 
+        if 'stains' in self.paper_config.defects:
+            self._add_stains(img, int(15 * aging))
         if 'holes' in self.paper_config.defects:
             self._add_holes(img, int(10 * aging))
         if 'tears' in self.paper_config.defects:

@@ -56,7 +56,7 @@ class DatasetConfig:
     aging_level_range: Tuple[int, int] = (20, 80)
     defects_mode: str = "random"  # "random", "all", "none"
     defects_pool: List[str] = field(
-        default_factory=lambda: ["holes", "tears"]
+        default_factory=lambda: ["stains", "holes", "tears"]
     )
     use_bleed_through: str = "always"       # "always", "never", "random"
     use_book_edges: str = "always"          # "always", "never", "random"
