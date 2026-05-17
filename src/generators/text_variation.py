@@ -87,7 +87,9 @@ class VariatedTextRenderer:
 
         self.current_word_angle = random.uniform(-self.vs["word_angle_max"], self.vs["word_angle_max"])
 
-        num_var = max(0, int(word_length * self.char_variation_prob))
+        # Guarantee at least 1 variation position so single-char tokens (table
+        # cells, code numbers) also receive per-character variation.
+        num_var = max(1, int(word_length * self.char_variation_prob)) if word_length > 0 else 0
         self.variation_positions = (
             random.sample(range(word_length), min(num_var, word_length)) if num_var else []
         )
