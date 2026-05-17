@@ -26,7 +26,7 @@ def apply_bleed_through(
     if blur_radius is None:
         blur_radius = random.uniform(1.5, 4.0)
     if opacity is None:
-        opacity = random.uniform(0.40, 0.75)
+        opacity = random.uniform(0.40, 0.60)
 
     if back_image is not None:
         source = back_image.convert('RGB').resize(pil_img.size)
