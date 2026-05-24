@@ -16,7 +16,7 @@ from src.models.table_codes_config import TableCodesConfig
 from src.constants import INK_COLOR_MAP, PAIR_SPACING_PX
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
-from src.generators.augmentation import apply_photo_augmentation
+from src.generators.augmentation import apply_photo_augmentation, AugmentationState
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.database.font_manager import FontManager
 from src.gui.dataset_dialog import DatasetDialog
@@ -131,6 +131,10 @@ class CipherGeneratorGUI:
         self._debounce_timer = None
         self._debounce_delay = 0.3  # 300ms delay before regenerating
         self._is_generating = False  # Prevent concurrent generations
+
+        # Cached augmentation state — cleared only on manual Generate Preview so that
+        # every auto-regenerate applies identical photographic effects.
+        self._aug_state: AugmentationState | None = None
 
         # Cached cipher entries for consistent preview during visual changes
         self._cached_cipher_entries = None
@@ -721,7 +725,7 @@ class CipherGeneratorGUI:
         panel.draw_header_line_var.trace_add('write', self._on_visual_config_change)
         panel.font_size_var.trace_add('write', self._on_visual_config_change)
         panel.section_title_var.trace_add('write', self._on_visual_config_change)
-        panel.section_title_text.trace_add('write', self._on_visual_config_change)
+        panel.section_title_text.trace_add('write', self._on_title_config_change)
 
     def _update_num_symbols_visibility(self, panel: _TablePanel):
         """Show the 'Number of Symbols' row only for non-alphabet content types."""
@@ -978,9 +982,9 @@ class CipherGeneratorGUI:
         self.aging_var.trace_add('write', self._on_paper_config_change)
         for var in self.defect_vars.values():
             var.trace_add('write', self._on_paper_config_change)
-        self.aug_bleed_var.trace_add('write', self._on_paper_config_change)
-        self.aug_book_edges_var.trace_add('write', self._on_paper_config_change)
-        self.aug_other_var.trace_add('write', self._on_paper_config_change)
+        self.aug_bleed_var.trace_add('write', self._on_aug_bleed_change)
+        self.aug_book_edges_var.trace_add('write', self._on_aug_book_edges_change)
+        self.aug_other_var.trace_add('write', self._on_aug_other_change)
 
         # Cipher config listeners (content change - invalidate cache)
         self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
@@ -1008,8 +1012,8 @@ class CipherGeneratorGUI:
         self.include_title_var.trace_add('write', self._on_visual_config_change)
         # Section title toggles and text fields (CP + global)
         self.cp_section_title_var.trace_add('write', self._on_visual_config_change)
-        self.cp_section_title_text.trace_add('write', self._on_visual_config_change)
-        self.include_title_text.trace_add('write', self._on_visual_config_change)
+        self.cp_section_title_text.trace_add('write', self._on_title_config_change)
+        self.include_title_text.trace_add('write', self._on_title_config_change)
         # Note: table panel listeners are bound per-panel in _bind_panel_listeners()
 
         # Layout & ink listeners (visual only)
@@ -1023,6 +1027,10 @@ class CipherGeneratorGUI:
         """Called when visual config changes - uses all cached data"""
         self._schedule_debounced_regenerate()
 
+    def _on_title_config_change(self, *args):
+        """Called when a title text field changes — uses a longer debounce to avoid lag while typing"""
+        self._schedule_debounced_regenerate(delay=3.0)
+
     def _on_layout_config_change(self, *args):
         """Called when layout/ink config changes - update cm labels and re-render."""
         self._update_cm_labels()
@@ -1030,6 +1038,42 @@ class CipherGeneratorGUI:
 
     def _on_paper_config_change(self, *args):
         """Called when paper config changes - invalidates paper cache only"""
+        self._invalidate_paper_cache()
+        self._schedule_debounced_regenerate()
+
+    def _on_aug_bleed_change(self, *args):
+        """Bleed-through toggled.
+
+        Turning off: the != 'never' guard in replay mode skips it automatically.
+        Turning on: set apply_bleed=None so the next render picks fresh random params.
+        """
+        if self._aug_state is not None and self.aug_bleed_var.get():
+            self._aug_state.apply_bleed = None
+        self._invalidate_paper_cache()
+        self._schedule_debounced_regenerate()
+
+    def _on_aug_book_edges_change(self, *args):
+        """Book-edges toggled.
+
+        Turning off: the != 'never' guard in replay mode skips it automatically.
+        Turning on: set spatial_mode=None so the next render picks a fresh spatial effect.
+        """
+        if self._aug_state is not None and self.aug_book_edges_var.get():
+            self._aug_state.spatial_mode = None
+        self._invalidate_paper_cache()
+        self._schedule_debounced_regenerate()
+
+    def _on_aug_other_change(self, *args):
+        """Other (surface/vignette/pipeline) toggled.
+
+        Turning off: != 'never' guards in replay mode skip everything automatically.
+        Turning on: set sentinels so the next render picks fresh params for all three.
+        """
+        if self._aug_state is not None and self.aug_other_var.get():
+            self._aug_state.spatial_mode    = None
+            self._aug_state.surface_replay  = None
+            self._aug_state.apply_vignette  = None
+            self._aug_state.pipeline_replay = None
         self._invalidate_paper_cache()
         self._schedule_debounced_regenerate()
 
@@ -1046,10 +1090,13 @@ class CipherGeneratorGUI:
         """Invalidate the cached paper image"""
         self._cached_paper_image = None
 
-    def _schedule_debounced_regenerate(self):
+    def _schedule_debounced_regenerate(self, delay: float | None = None):
         """Schedule a debounced regeneration (only if user has generated at least once)"""
         if not self._preview_generated_once:
             return
+
+        if delay is None:
+            delay = self._debounce_delay
 
         # Cancel any pending regeneration
         if self._debounce_timer is not None:
@@ -1057,7 +1104,7 @@ class CipherGeneratorGUI:
 
         # Schedule new regeneration after delay
         self._debounce_timer = threading.Timer(
-            self._debounce_delay,
+            delay,
             self._debounced_regenerate
         )
         self._debounce_timer.start()
@@ -1091,6 +1138,8 @@ class CipherGeneratorGUI:
                 _p.cached_code_table = None
                 _p.cached_code_table_key = None
                 _p.cached_words = None
+            # Reset augmentation state so the next render picks fresh random effects
+            self._aug_state = None
             self._do_generate(show_message=True)
             # Enable auto-regeneration on future config changes
             self._preview_generated_once = True
@@ -1259,12 +1308,15 @@ class CipherGeneratorGUI:
                     column_divider=self.column_divider_var.get(),
                 )
 
-            # Store for saving — augment image and update annotations together
-            img = self._augment_with_annotations(
+            # Augment image, keeping annotations in sync.  Re-use _aug_state so
+            # perspective/colour/edges are identical across auto-regenerates; the
+            # state is cleared to None only when Generate Preview is clicked.
+            img, self._aug_state = self._augment_with_annotations(
                 img, generator,
                 bleed_through="always" if self.aug_bleed_var.get() else "never",
                 book_edges="always" if self.aug_book_edges_var.get() else "never",
                 other="always" if self.aug_other_var.get() else "never",
+                aug_state=self._aug_state,
             )
             self.preview_image = img
 
@@ -1498,28 +1550,29 @@ class CipherGeneratorGUI:
         bleed_through: str = "random",
         book_edges: str = "random",
         other: str = "random",
-    ) -> Image.Image:
+        aug_state: AugmentationState | None = None,
+    ):
         """Run augmentation and keep generator.coco_manager bboxes in sync.
 
-        The Perspective transform warps pixel positions, so any annotation
-        bbox must be transformed alongside the image. Annotations whose
-        bbox ends up off-canvas (or below the visibility threshold) are
-        dropped from the manager.
+        Returns (augmented_image, AugmentationState).  Pass the returned state
+        back on subsequent calls to replay identical photographic effects.
         """
         aug_kwargs = dict(
             bleed_through=bleed_through,
             book_edges=book_edges,
             other=other,
+            state=aug_state,
         )
         coco = generator.coco_manager
         anns = coco.annotations
         if not anns:
-            return apply_photo_augmentation(img, **aug_kwargs)
+            out_img, new_state = apply_photo_augmentation(img, **aug_kwargs)
+            return out_img, new_state
 
         bboxes = [list(a["bbox"]) for a in anns]
         labels = list(range(len(anns)))
 
-        new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
+        new_img, new_bboxes, surviving_labels, new_state = apply_photo_augmentation(
             img, bboxes=bboxes, labels=labels, **aug_kwargs,
         )
 
@@ -1539,7 +1592,7 @@ class CipherGeneratorGUI:
             ann["segmentation"] = [[x, y, x + w, y, x + w, y + h, x, y + h]]
             rebuilt.append(ann)
         coco.annotations = rebuilt
-        return new_img
+        return new_img, new_state
 
     def _display_preview(self, img: Image.Image):
         """Display preview image on canvas - scaled to fit entirely"""

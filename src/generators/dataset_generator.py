@@ -284,7 +284,7 @@ class DatasetGenerator:
         back_image = self._render_content_image(self.config.sample())
         back_image = back_image.transpose(Image.FLIP_LEFT_RIGHT)
 
-        img = apply_photo_augmentation(
+        img, _ = apply_photo_augmentation(
             img, back_image=back_image,
             bleed_through=params.get("bleed_through", "random"),
             book_edges=params.get("book_edges", "random"),
@@ -372,13 +372,14 @@ class DatasetGenerator:
         )
 
         if not owned:
-            return apply_photo_augmentation(img, **aug_kwargs)
+            out_img, _ = apply_photo_augmentation(img, **aug_kwargs)
+            return out_img
 
         bboxes = [list(ann["bbox"]) for _, ann in owned]
         labels = [i for i, _ in owned]
         orig_dims = {i: (ann["bbox"][2], ann["bbox"][3]) for i, ann in owned}
 
-        new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
+        new_img, new_bboxes, surviving_labels, _ = apply_photo_augmentation(
             img, bboxes=bboxes, labels=labels, **aug_kwargs,
         )
 
