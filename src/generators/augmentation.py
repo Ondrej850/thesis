@@ -310,7 +310,7 @@ def apply_photo_augmentation(
 
     # ── 1. Bleed-through ────────────────────────────────────────────────────
     if replay_mode:
-        if state.apply_bleed:
+        if state.apply_bleed and bleed_through != "never":
             pil_img = apply_bleed_through(
                 pil_img,
                 blur_radius=state.bleed_blur,
@@ -336,7 +336,7 @@ def apply_photo_augmentation(
 
     # ── 2. Surface capture OR book edges ────────────────────────────────────
     if replay_mode:
-        if state.spatial_mode == "surface":
+        if state.spatial_mode == "surface" and other != "never":
             img, bboxes_in, labels_in = _run_surface_capture(img, bboxes_in, labels_in, state)
         elif state.spatial_mode == "book_edges" and book_edges != "never":
             img = _apply_book_edges(img, state)
@@ -371,7 +371,7 @@ def apply_photo_augmentation(
 
     # ── 3. Vignette ─────────────────────────────────────────────────────────
     if replay_mode:
-        if state.apply_vignette:
+        if state.apply_vignette and other != "never":
             img = _add_vignette(img, state.vignette_strength)
     else:
         do_vignette = other == "always" or (other == "random" and random.random() < 0.40)

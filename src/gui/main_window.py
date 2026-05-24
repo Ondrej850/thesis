@@ -982,9 +982,9 @@ class CipherGeneratorGUI:
         self.aging_var.trace_add('write', self._on_paper_config_change)
         for var in self.defect_vars.values():
             var.trace_add('write', self._on_paper_config_change)
-        self.aug_bleed_var.trace_add('write', self._on_paper_config_change)
-        self.aug_book_edges_var.trace_add('write', self._on_paper_config_change)
-        self.aug_other_var.trace_add('write', self._on_paper_config_change)
+        self.aug_bleed_var.trace_add('write', self._on_aug_bleed_change)
+        self.aug_book_edges_var.trace_add('write', self._on_aug_book_edges_change)
+        self.aug_other_var.trace_add('write', self._on_aug_other_change)
 
         # Cipher config listeners (content change - invalidate cache)
         self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
@@ -1038,6 +1038,47 @@ class CipherGeneratorGUI:
 
     def _on_paper_config_change(self, *args):
         """Called when paper config changes - invalidates paper cache only"""
+        self._invalidate_paper_cache()
+        self._schedule_debounced_regenerate()
+
+    def _on_aug_bleed_change(self, *args):
+        """Bleed-through toggled: reset cached bleed params so next render re-randomises them."""
+        if self._aug_state is not None:
+            self._aug_state.apply_bleed   = False
+            self._aug_state.bleed_blur    = 2.0
+            self._aug_state.bleed_opacity = 0.5
+        self._invalidate_paper_cache()
+        self._schedule_debounced_regenerate()
+
+    def _on_aug_book_edges_change(self, *args):
+        """Book-edges toggled: reset cached book-edge params so next render re-randomises them."""
+        if self._aug_state is not None and self._aug_state.spatial_mode == "book_edges":
+            self._aug_state.spatial_mode  = "none"
+            self._aug_state.book_edge_fill = 0.0
+            self._aug_state.book_left_w   = None
+            self._aug_state.book_right_w  = None
+            self._aug_state.book_top_w    = None
+            self._aug_state.book_bottom_w = None
+        self._invalidate_paper_cache()
+        self._schedule_debounced_regenerate()
+
+    def _on_aug_other_change(self, *args):
+        """Other (surface/vignette/pipeline) toggled: reset all 'other' cached params."""
+        if self._aug_state is not None:
+            self._aug_state.spatial_mode        = "none"
+            self._aug_state.surface_replay      = None
+            self._aug_state.surface_bg_color    = (252, 252, 250)
+            self._aug_state.surface_shadow_off  = 12
+            self._aug_state.surface_shadow_blur = 16
+            self._aug_state.surface_shadow_alpha= 90
+            self._aug_state.book_edge_fill      = 0.0
+            self._aug_state.book_left_w         = None
+            self._aug_state.book_right_w        = None
+            self._aug_state.book_top_w          = None
+            self._aug_state.book_bottom_w       = None
+            self._aug_state.apply_vignette      = False
+            self._aug_state.vignette_strength   = 0.15
+            self._aug_state.pipeline_replay     = None
         self._invalidate_paper_cache()
         self._schedule_debounced_regenerate()
 
