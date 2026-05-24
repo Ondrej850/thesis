@@ -342,7 +342,7 @@ class VariatedTextRenderer:
         return anns
 
 
-class CipherEntryRenderer:
+class CipherPairsRenderer:
     """High-level renderer for (cipher_text + separator + key_value) pairs."""
 
     def __init__(self, text_renderer: VariatedTextRenderer):
