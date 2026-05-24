@@ -10,6 +10,7 @@ import random
 import os
 import threading
 from typing import List, Tuple
+import numpy as np
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
 from src.models.table_codes_config import TableCodesConfig
@@ -131,6 +132,9 @@ class CipherGeneratorGUI:
         self._debounce_timer = None
         self._debounce_delay = 0.3  # 300ms delay before regenerating
         self._is_generating = False  # Prevent concurrent generations
+
+        # Fixed random seed for augmentation — re-randomised only on manual Generate Preview
+        self._aug_seed: int | None = None
 
         # Cached cipher entries for consistent preview during visual changes
         self._cached_cipher_entries = None
@@ -721,7 +725,7 @@ class CipherGeneratorGUI:
         panel.draw_header_line_var.trace_add('write', self._on_visual_config_change)
         panel.font_size_var.trace_add('write', self._on_visual_config_change)
         panel.section_title_var.trace_add('write', self._on_visual_config_change)
-        panel.section_title_text.trace_add('write', self._on_visual_config_change)
+        panel.section_title_text.trace_add('write', self._on_title_config_change)
 
     def _update_num_symbols_visibility(self, panel: _TablePanel):
         """Show the 'Number of Symbols' row only for non-alphabet content types."""
@@ -1008,8 +1012,8 @@ class CipherGeneratorGUI:
         self.include_title_var.trace_add('write', self._on_visual_config_change)
         # Section title toggles and text fields (CP + global)
         self.cp_section_title_var.trace_add('write', self._on_visual_config_change)
-        self.cp_section_title_text.trace_add('write', self._on_visual_config_change)
-        self.include_title_text.trace_add('write', self._on_visual_config_change)
+        self.cp_section_title_text.trace_add('write', self._on_title_config_change)
+        self.include_title_text.trace_add('write', self._on_title_config_change)
         # Note: table panel listeners are bound per-panel in _bind_panel_listeners()
 
         # Layout & ink listeners (visual only)
@@ -1022,6 +1026,10 @@ class CipherGeneratorGUI:
     def _on_visual_config_change(self, *args):
         """Called when visual config changes - uses all cached data"""
         self._schedule_debounced_regenerate()
+
+    def _on_title_config_change(self, *args):
+        """Called when a title text field changes — uses a longer debounce to avoid lag while typing"""
+        self._schedule_debounced_regenerate(delay=3.0)
 
     def _on_layout_config_change(self, *args):
         """Called when layout/ink config changes - update cm labels and re-render."""
@@ -1046,10 +1054,13 @@ class CipherGeneratorGUI:
         """Invalidate the cached paper image"""
         self._cached_paper_image = None
 
-    def _schedule_debounced_regenerate(self):
+    def _schedule_debounced_regenerate(self, delay: float | None = None):
         """Schedule a debounced regeneration (only if user has generated at least once)"""
         if not self._preview_generated_once:
             return
+
+        if delay is None:
+            delay = self._debounce_delay
 
         # Cancel any pending regeneration
         if self._debounce_timer is not None:
@@ -1057,7 +1068,7 @@ class CipherGeneratorGUI:
 
         # Schedule new regeneration after delay
         self._debounce_timer = threading.Timer(
-            self._debounce_delay,
+            delay,
             self._debounced_regenerate
         )
         self._debounce_timer.start()
@@ -1091,6 +1102,8 @@ class CipherGeneratorGUI:
                 _p.cached_code_table = None
                 _p.cached_code_table_key = None
                 _p.cached_words = None
+            # Pick new augmentation seed so re-renders stay visually consistent
+            self._aug_seed = random.randint(0, 2**31 - 1)
             self._do_generate(show_message=True)
             # Enable auto-regeneration on future config changes
             self._preview_generated_once = True
@@ -1259,13 +1272,24 @@ class CipherGeneratorGUI:
                     column_divider=self.column_divider_var.get(),
                 )
 
-            # Store for saving — augment image and update annotations together
-            img = self._augment_with_annotations(
-                img, generator,
-                bleed_through="always" if self.aug_bleed_var.get() else "never",
-                book_edges="always" if self.aug_book_edges_var.get() else "never",
-                other="always" if self.aug_other_var.get() else "never",
-            )
+            # Store for saving — augment image and update annotations together.
+            # Use the fixed aug seed so augmentation choices are stable across
+            # auto-regenerates; only a manual Generate Preview picks a new seed.
+            _py_state = random.getstate()
+            _np_state = np.random.get_state()
+            if self._aug_seed is not None:
+                random.seed(self._aug_seed)
+                np.random.seed(self._aug_seed)
+            try:
+                img = self._augment_with_annotations(
+                    img, generator,
+                    bleed_through="always" if self.aug_bleed_var.get() else "never",
+                    book_edges="always" if self.aug_book_edges_var.get() else "never",
+                    other="always" if self.aug_other_var.get() else "never",
+                )
+            finally:
+                random.setstate(_py_state)
+                np.random.set_state(_np_state)
             self.preview_image = img
 
             # Display preview
