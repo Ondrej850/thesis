@@ -12,7 +12,7 @@ import threading
 from typing import List, Tuple
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
-from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
+from src.models.table_codes_config import TableCodesConfig
 from src.constants import INK_COLOR_MAP, PAIR_SPACING_PX
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
@@ -257,15 +257,29 @@ class CipherGeneratorGUI:
         defects_frame.grid(row=1, column=1, columnspan=2, sticky=tk.W, pady=2)
 
         self.defect_vars = {}
-        defects = ['wrinkled_edges', 'burns', 'stains', 'holes', 'tears', 'yellowing']
+        defects = ['stains', 'holes', 'tears', 'ink_drops']
         for i, defect in enumerate(defects):
             var = tk.BooleanVar(value=True)
             self.defect_vars[defect] = var
             ttk.Checkbutton(defects_frame, text=defect.replace('_', ' ').title(),
-                           variable=var).grid(row=i//2, column=i%2, sticky=tk.W, padx=5)
+                           variable=var).grid(row=0, column=i, sticky=tk.W, padx=5)
+
+        # Photo augmentation
+        ttk.Label(frame, text="Augmentation:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        aug_frame = ttk.Frame(frame)
+        aug_frame.grid(row=2, column=1, columnspan=2, sticky=tk.W, pady=2)
+        self.aug_bleed_var = tk.BooleanVar(value=True)
+        self.aug_book_edges_var = tk.BooleanVar(value=True)
+        self.aug_other_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(aug_frame, text="Bleed-through",
+                        variable=self.aug_bleed_var).grid(row=0, column=0, sticky=tk.W, padx=5)
+        ttk.Checkbutton(aug_frame, text="Book / Scan edges",
+                        variable=self.aug_book_edges_var).grid(row=0, column=1, sticky=tk.W, padx=5)
+        ttk.Checkbutton(aug_frame, text="Other (noise, perspective, compression…)",
+                        variable=self.aug_other_var).grid(row=0, column=2, sticky=tk.W, padx=5)
 
         # Font selection
-        ttk.Label(frame, text="Font:").grid(row=2, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Font:").grid(row=3, column=0, sticky=tk.W, pady=2)
         self.font_selection_var = tk.StringVar(value="Random")
 
         font_choices = ["Random"] + self.font_manager.get_all_font_names()
@@ -274,17 +288,17 @@ class CipherGeneratorGUI:
 
         font_combo = ttk.Combobox(frame, textvariable=self.font_selection_var,
                                   values=font_choices, state='readonly', width=25)
-        font_combo.grid(row=2, column=1, sticky=(tk.W, tk.E), pady=2)
+        font_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
 
         # Variation Level
-        ttk.Label(frame, text="Variation Level of Text:").grid(row=3, column=0, sticky=tk.W, pady=2)
+        ttk.Label(frame, text="Variation Level of Text:").grid(row=4, column=0, sticky=tk.W, pady=2)
         self.variation_level_var = tk.StringVar(value="medium")
         variation_combo = ttk.Combobox(frame, textvariable=self.variation_level_var,
                                        values=['none', 'low', 'medium', 'high'],
                                        state='readonly', width=25)
-        variation_combo.grid(row=3, column=1, sticky=(tk.W, tk.E), pady=2)
+        variation_combo.grid(row=4, column=1, sticky=(tk.W, tk.E), pady=2)
         ttk.Label(frame, text="(Controls character size, position, rotation)",
-                  font=('TkDefaultFont', 8), foreground='gray').grid(row=3, column=2, sticky=tk.W, padx=5)
+                  font=('TkDefaultFont', 8), foreground='gray').grid(row=4, column=2, sticky=tk.W, padx=5)
 
     def setup_cipher_config(self, parent):
         """Setup column-pairs cipher configuration section."""
@@ -458,7 +472,7 @@ class CipherGeneratorGUI:
         self._cp_title_random_btn = ttk.Button(
             frame, text="Random",
             command=lambda: self.cp_section_title_text.set(
-                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+                self.db.get_words("titles", 1)[0]
             ),
             width=8,
         )
@@ -680,7 +694,7 @@ class CipherGeneratorGUI:
         panel.title_random_btn = ttk.Button(
             outer, text="Random",
             command=lambda p=panel: p.section_title_text.set(
-                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+                self.db.get_words("titles", 1)[0]
             ),
             width=8,
         )
@@ -868,7 +882,7 @@ class CipherGeneratorGUI:
         self._include_title_random_btn = ttk.Button(
             frame, text="Random",
             command=lambda: self.include_title_text.set(
-                random.choice(CipherImageGenerator.TITLE_TEMPLATES)
+                self.db.get_words("titles", 1)[0]
             ),
             width=8,
         )
@@ -964,6 +978,9 @@ class CipherGeneratorGUI:
         self.aging_var.trace_add('write', self._on_paper_config_change)
         for var in self.defect_vars.values():
             var.trace_add('write', self._on_paper_config_change)
+        self.aug_bleed_var.trace_add('write', self._on_paper_config_change)
+        self.aug_book_edges_var.trace_add('write', self._on_paper_config_change)
+        self.aug_other_var.trace_add('write', self._on_paper_config_change)
 
         # Cipher config listeners (content change - invalidate cache)
         self.cipher_type_var.trace_add('write', self._on_cipher_config_change)
@@ -1163,7 +1180,7 @@ class CipherGeneratorGUI:
 
             # ── Title / header (rendered first if enabled) ──────────────
             if include_title:
-                title_text = self.include_title_text.get().strip() or None
+                title_text = self.include_title_text.get().strip() or self.db.get_words("titles", 1)[0]
                 current_y = generator.render_title(
                     img, start_x, current_y,
                     font_path=selected_font_path,
@@ -1181,7 +1198,7 @@ class CipherGeneratorGUI:
                 if not panel.include_var.get():
                     continue
                 if panel.section_title_var.get():
-                    t_text = panel.section_title_text.get().strip() or None
+                    t_text = panel.section_title_text.get().strip() or self.db.get_words("titles", 1)[0]
                     current_y = generator.render_title(
                         img, start_x, current_y,
                         font_path=selected_font_path,
@@ -1214,7 +1231,7 @@ class CipherGeneratorGUI:
             # ── Column pairs (rendered below table, or from top if no table) ──
             if include_pairs:
                 if self.cp_section_title_var.get():
-                    title_text = self.cp_section_title_text.get().strip() or None
+                    title_text = self.cp_section_title_text.get().strip() or self.db.get_words("titles", 1)[0]
                     current_y = generator.render_title(
                         img, start_x, current_y,
                         font_path=selected_font_path,
@@ -1243,7 +1260,12 @@ class CipherGeneratorGUI:
                 )
 
             # Store for saving — augment image and update annotations together
-            img = self._augment_with_annotations(img, generator)
+            img = self._augment_with_annotations(
+                img, generator,
+                bleed_through="always" if self.aug_bleed_var.get() else "never",
+                book_edges="always" if self.aug_book_edges_var.get() else "never",
+                other="always" if self.aug_other_var.get() else "never",
+            )
             self.preview_image = img
 
             # Display preview
@@ -1318,7 +1340,7 @@ class CipherGeneratorGUI:
                             entries.append((letter, self._generate_key_value(cipher_type, key_type)))
                 else:
                     additional_needed = num_entries - cached_count
-                    words = self.db.get_cipher_keys(cipher_type)
+                    words = self.db.get_words(cipher_type)
                     if words:
                         if key_type == "double_char":
                             used_keys = {e[1] for e in entries}
@@ -1349,7 +1371,7 @@ class CipherGeneratorGUI:
             else:
                 entries = [(l, self._generate_key_value(cipher_type, key_type)) for l in letters]
         else:
-            words = self.db.get_cipher_keys(cipher_type)
+            words = self.db.get_words(cipher_type)
             if not words:
                 entries = [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
             elif key_type == "double_char":
@@ -1375,7 +1397,7 @@ class CipherGeneratorGUI:
         num_sym = panel.num_symbols_var.get() if content_type != "alphabet" else 0
         if content_type == "words":
             if panel.cached_words is None:
-                panel.cached_words = self.db.get_table_words(num_sym) if num_sym > 0 else []
+                panel.cached_words = self.db.get_words("table_codes", num_sym) if num_sym > 0 else []
             fetched_words = panel.cached_words
         else:
             panel.cached_words = None  # clear stale cache if user switched away from words
@@ -1444,10 +1466,10 @@ class CipherGeneratorGUI:
         key_type:
             'number'            – multi-digit number
             'double_char'       – two-character key (unique pool managed by caller)
-            'special_character' – random symbol from NULL_SYMBOLS
+            'special_character' – random null symbol from database
         """
         if key_type == "special_character":
-            return random.choice(NULL_SYMBOLS)
+            return random.choice(self.db.get_words("nulls"))
         # double_char is handled at the batch level (_get_cipher_entries)
         return str(self._generate_key_number(cipher_type))
 
@@ -1470,7 +1492,13 @@ class CipherGeneratorGUI:
             return random.randint(100, 200)
 
     @staticmethod
-    def _augment_with_annotations(img: Image.Image, generator) -> Image.Image:
+    def _augment_with_annotations(
+        img: Image.Image,
+        generator,
+        bleed_through: str = "random",
+        book_edges: str = "random",
+        other: str = "random",
+    ) -> Image.Image:
         """Run augmentation and keep generator.coco_manager bboxes in sync.
 
         The Perspective transform warps pixel positions, so any annotation
@@ -1478,16 +1506,21 @@ class CipherGeneratorGUI:
         bbox ends up off-canvas (or below the visibility threshold) are
         dropped from the manager.
         """
+        aug_kwargs = dict(
+            bleed_through=bleed_through,
+            book_edges=book_edges,
+            other=other,
+        )
         coco = generator.coco_manager
         anns = coco.annotations
         if not anns:
-            return apply_photo_augmentation(img)
+            return apply_photo_augmentation(img, **aug_kwargs)
 
         bboxes = [list(a["bbox"]) for a in anns]
         labels = list(range(len(anns)))
 
         new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
-            img, bboxes=bboxes, labels=labels,
+            img, bboxes=bboxes, labels=labels, **aug_kwargs,
         )
 
         survived = {

@@ -5,7 +5,54 @@ In-memory data store for cipher data.
 import random
 from typing import List
 
-from src.models.table_codes_config import NULL_SYMBOLS
+# ---------------------------------------------------------------------------
+# Shared linguistic constants — used by both DatabaseManager and TableCodesConfig
+# ---------------------------------------------------------------------------
+
+# Common English bigrams ordered by frequency
+COMMON_BIGRAMS: List[str] = [
+    'TH', 'HE', 'IN', 'ER', 'AN', 'RE', 'ON', 'EN',
+    'AT', 'ES', 'ED', 'IS', 'IT', 'AL', 'AR', 'ST',
+    'TO', 'NT', 'NG', 'SE', 'HA', 'AS', 'OU', 'IO',
+    'LE', 'VE', 'CO', 'ME', 'DE', 'HI', 'RI', 'RO',
+]
+
+# Common English trigrams ordered by frequency
+COMMON_TRIGRAMS: List[str] = [
+    'THE', 'AND', 'ING', 'ENT', 'ION', 'HER', 'FOR', 'THA',
+    'NTH', 'INT', 'ERE', 'TIO', 'TER', 'EST', 'ERS', 'HAT',
+    'HIS', 'ITH', 'VER', 'ATE', 'ALL', 'NOT', 'ARE', 'WAS',
+    'ONE', 'OUT', 'MAN', 'BUT', 'OFT', 'ETH', 'STH', 'OUR',
+]
+
+# Null symbols used as decorative placeholders.
+# All characters are from Basic Latin (U+0020-U+007E) or Latin-1 Supplement
+# (U+00A1-U+00FF) — ranges covered by virtually every TTF font.
+NULL_SYMBOLS: List[str] = [
+    # ASCII special characters (Basic Latin — render in every font)
+    '!', '#', '$', '%', '&', '*', '+', '=', '?', '@',
+    '^', '~', '{', '}', '[', ']', '|', '/', '<', '>',
+    # Latin-1 Supplement — render in virtually every TTF font
+    '¡', '¢', '£', '¤', '¥', '¦', '§', '©', '®', '°',
+    '±', '²', '³', 'µ', '¶', '·', '¼', '½', '¾', '¿',
+    '×', '÷',
+]
+
+# ---------------------------------------------------------------------------
+# Seed data
+# ---------------------------------------------------------------------------
+
+_TITLE_TEMPLATES: List[str] = [
+    "Alphabetum Cifratum", "Cifra Nova", "Clavis Secreta",
+    "Tabula Cifrarum", "Liber Secretus", "Cifra Generalis",
+    "Alphabetum Secretum", "Cifra Diplomatica", "Clavis Alphabetica",
+    "Cifra Regia", "Tabula Secretorum", "Clavis Cifrae",
+    "Liber Cifrarum", "Tabula Nova", "Cifra Universalis",
+    "Clavis Generalis", "Alphabetum Novum", "Liber Clausus",
+    "Nomenclator", "Cifra", "Clavis", "Alphabetum",
+    "Nomenclatura", "Sigillum", "Tabula", "Secretum",
+    "Vocabularium", "Registrum",
+]
 
 # ---------------------------------------------------------------------------
 # Seed data
@@ -17,16 +64,6 @@ _SUBSTITUTION_WORDS: List[str] = [
     "Behem", "Dux", "Rex", "Princeps", "Francesco",
     "Austria", "Bavaria", "Saxonia", "Prussia", "Venetia",
     "Milano", "Firenze", "Roma", "Napoli", "Genova",
-]
-
-_BIGRAM_WORDS: List[str] = [
-    "ab", "in", "de", "et", "ad", "ex", "co", "on", "er", "an",
-    "re", "te", "st", "en", "or", "ti", "ar", "se", "it", "al",
-]
-
-_TRIGRAM_WORDS: List[str] = [
-    "rex", "dux", "qui", "est", "per", "con", "ent", "ter",
-    "tio", "pro", "res", "rum", "tur", "unt", "and", "ati",
 ]
 
 _DICTIONARY_WORDS: List[str] = [
@@ -149,9 +186,10 @@ _TABLE_CODES_WORDS: List[str] = [
 ]
 
 _WORD_LISTS = {
+    "titles":       _TITLE_TEMPLATES,
     "substitution": _SUBSTITUTION_WORDS,
-    "bigram":       _BIGRAM_WORDS,
-    "trigram":      _TRIGRAM_WORDS,
+    "bigram":       COMMON_BIGRAMS,
+    "trigram":      COMMON_TRIGRAMS,
     "dictionary":   _DICTIONARY_WORDS,
     "nulls":        list(NULL_SYMBOLS),
     "table_codes":  _TABLE_CODES_WORDS,
@@ -164,11 +202,14 @@ class DatabaseManager:
     def __init__(self):
         self._data = {k: list(v) for k, v in _WORD_LISTS.items()}
 
-    def get_cipher_keys(self, cipher_type: str) -> List[str]:
-        """Return all words for the given cipher type."""
-        return list(self._data.get(cipher_type, []))
+    def get_words(self, cipher_type: str, n: int = 0) -> List[str]:
+        """Return words for the given cipher type.
 
-    def get_table_words(self, n: int) -> List[str]:
-        """Return n randomly sampled words from the table-codes word pool."""
-        pool = self._data["table_codes"]
-        return random.sample(pool, min(n, len(pool)))
+        n=0  → return the full list
+        n>0  → return a random sample of min(n, pool_size) items
+        """
+        pool = self._data.get(cipher_type, [])
+        if n > 0:
+            return random.sample(pool, min(n, len(pool)))
+        return list(pool)
+

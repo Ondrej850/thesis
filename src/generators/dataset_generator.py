@@ -12,11 +12,10 @@ from PIL import Image
 
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
-from src.models.table_codes_config import TableCodesConfig, NULL_SYMBOLS
+from src.models.table_codes_config import TableCodesConfig
 from src.models.dataset_config import DatasetConfig
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.generators.image_generator import CipherImageGenerator
-from src.generators.table_codes_generator import TableCodesGenerator
 from src.generators.augmentation import apply_photo_augmentation
 from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
@@ -134,6 +133,7 @@ class DatasetGenerator:
                 font_path=font_path, use_variations=use_variations,
                 track_annotations=True, ink_color=ink_color,
                 right_margin=right_margin, bottom_margin=bottom_margin,
+                title_text=self.db.get_words("titles", 1)[0],
             )
             self._transfer_annotations(generator, coco_manager, image_id)
 
@@ -148,23 +148,24 @@ class DatasetGenerator:
                     font_path=font_path, use_variations=use_variations,
                     track_annotations=True, ink_color=ink_color,
                     right_margin=right_margin, bottom_margin=bottom_margin,
+                    title_text=self.db.get_words("titles", 1)[0],
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
             if current_y >= bottom_limit:
                 break
-            table_gen, code_table = self._make_table_generator(
-                table_params, params, variation_level, ink_color
-            )
-            current_y = table_gen.render_table(
-                img, params["start_x"], current_y, font_path,
-                code_table=code_table,
-                paper_width=paper_config.width,
-                paper_height=paper_config.height,
+            table_config = self._make_table_config(table_params)
+            current_y = generator.render_table_codes(
+                img, table_config, params["start_x"], current_y,
+                font_path=font_path,
+                use_variations=use_variations,
+                variation_level=variation_level,
+                track_annotations=True,
+                font_size=table_params["font_size"],
+                ink_color=ink_color,
                 right_margin=right_margin,
                 bottom_margin=bottom_margin,
-                track_annotations=True,
             )
-            coco_manager.add_annotations(image_id, table_gen.get_annotations(image_id))
+            self._transfer_annotations(generator, coco_manager, image_id)
             current_y += params["spacing"] * 2
             any_table = True
 
@@ -179,6 +180,7 @@ class DatasetGenerator:
                     font_path=font_path, use_variations=use_variations,
                     track_annotations=True, ink_color=ink_color,
                     right_margin=right_margin, bottom_margin=bottom_margin,
+                    title_text=self.db.get_words("titles", 1)[0],
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
             if current_y < bottom_limit:
@@ -200,7 +202,12 @@ class DatasetGenerator:
                 )
                 self._transfer_annotations(generator, coco_manager, image_id)
 
-        img = self._augment_and_update_annotations(img, image_id, coco_manager)
+        img = self._augment_and_update_annotations(
+            img, image_id, coco_manager,
+            bleed_through=params.get("bleed_through", "random"),
+            book_edges=params.get("book_edges", "random"),
+            other=params.get("other", "random"),
+        )
         img.save(os.path.join(images_dir, filename))
 
     def _render_content_image(self, params: dict) -> Image.Image:
@@ -224,22 +231,23 @@ class DatasetGenerator:
                 font_path=font_path, use_variations=use_variations,
                 track_annotations=False, ink_color=ink_color,
                 right_margin=right_margin, bottom_margin=bottom_margin,
+                title_text=self.db.get_words("titles", 1)[0],
             )
 
         for table_params in params.get("tables", []):
             if current_y >= bottom_limit:
                 break
-            table_gen, code_table = self._make_table_generator(
-                table_params, params, variation_level, ink_color
-            )
-            current_y = table_gen.render_table(
-                img, params["start_x"], current_y, font_path,
-                code_table=code_table,
-                paper_width=paper_config.width,
-                paper_height=paper_config.height,
+            table_config = self._make_table_config(table_params)
+            current_y = generator.render_table_codes(
+                img, table_config, params["start_x"], current_y,
+                font_path=font_path,
+                use_variations=use_variations,
+                variation_level=variation_level,
+                track_annotations=False,
+                font_size=table_params["font_size"],
+                ink_color=ink_color,
                 right_margin=right_margin,
                 bottom_margin=bottom_margin,
-                track_annotations=False,
             )
             current_y += params["spacing"] * 2
 
@@ -276,7 +284,12 @@ class DatasetGenerator:
         back_image = self._render_content_image(self.config.sample())
         back_image = back_image.transpose(Image.FLIP_LEFT_RIGHT)
 
-        img = apply_photo_augmentation(img, back_image=back_image)
+        img = apply_photo_augmentation(
+            img, back_image=back_image,
+            bleed_through=params.get("bleed_through", "random"),
+            book_edges=params.get("book_edges", "random"),
+            other=params.get("other", "random"),
+        )
         img.save(os.path.join(images_dir, f"bg_{index:04d}.png"))
 
     # ------------------------------------------------------------------
@@ -298,19 +311,13 @@ class DatasetGenerator:
             ),
         )
 
-    def _make_table_generator(
-        self,
-        table_params: dict,
-        params: dict,
-        variation_level: str,
-        ink_color: tuple,
-    ) -> Tuple[TableCodesGenerator, dict]:
-        """Build a TableCodesGenerator and pre-generate its code table."""
+    def _make_table_config(self, table_params: dict) -> TableCodesConfig:
+        """Build a TableCodesConfig from sampled table parameters."""
         ct = table_params["content_type"]
         num_sym = table_params.get("num_symbols", 0)
-        words = self.db.get_table_words(num_sym) if ct == "words" and num_sym > 0 else None
+        words = self.db.get_words("table_codes", num_sym) if ct == "words" and num_sym > 0 else None
 
-        config = TableCodesConfig(
+        return TableCodesConfig(
             content_type=ct,
             num_symbols=num_sym,
             words=words,
@@ -323,14 +330,6 @@ class DatasetGenerator:
             use_pair_grid=table_params.get("pair_grid", False),
             draw_header_line=table_params.get("draw_header_line", True),
         )
-        gen = TableCodesGenerator(
-            config=config,
-            font_size=table_params["font_size"],
-            spacing=params["spacing"],
-            variation_level=variation_level,
-            ink_color=ink_color,
-        )
-        return gen, gen.generate_code_table()
 
     @staticmethod
     def _transfer_annotations(
@@ -355,6 +354,9 @@ class DatasetGenerator:
         img: Image.Image,
         image_id: int,
         coco_manager: COCOAnnotationManager,
+        bleed_through: str = "random",
+        book_edges: str = "random",
+        other: str = "random",
     ) -> Image.Image:
         """Augment image and update COCO bboxes to match spatial transforms.
 
@@ -363,15 +365,21 @@ class DatasetGenerator:
         owned = [(i, ann) for i, ann in enumerate(coco_manager.annotations)
                  if ann.get("image_id") == image_id]
 
+        aug_kwargs = dict(
+            bleed_through=bleed_through,
+            book_edges=book_edges,
+            other=other,
+        )
+
         if not owned:
-            return apply_photo_augmentation(img)
+            return apply_photo_augmentation(img, **aug_kwargs)
 
         bboxes = [list(ann["bbox"]) for _, ann in owned]
         labels = [i for i, _ in owned]
         orig_dims = {i: (ann["bbox"][2], ann["bbox"][3]) for i, ann in owned}
 
         new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
-            img, bboxes=bboxes, labels=labels,
+            img, bboxes=bboxes, labels=labels, **aug_kwargs,
         )
 
         _DIM_THRESHOLD = 0.70
@@ -430,15 +438,15 @@ class DatasetGenerator:
                 keys = self._generate_unique_double_char_keys(len(letters))
                 return list(zip(letters, keys))
             if key_type == "special_character":
-                return [(l, random.choice(NULL_SYMBOLS)) for l in letters]
+                return [(l, random.choice(self.db.get_words("nulls"))) for l in letters]
             return [(l, str(_generate_key_number(cipher_type))) for l in letters]
 
-        words = self.db.get_cipher_keys(cipher_type)
+        words = self.db.get_words(cipher_type)
         if not words:
             return [(f"Sample{i}", str(100 + i)) for i in range(num_entries)]
         if key_type == "double_char":
             keys = self._generate_unique_double_char_keys(num_entries)
             return [(random.choice(words), keys[i]) for i in range(num_entries)]
         if key_type == "special_character":
-            return [(random.choice(words), random.choice(NULL_SYMBOLS)) for _ in range(num_entries)]
+            return [(random.choice(words), random.choice(self.db.get_words("nulls"))) for _ in range(num_entries)]
         return [(random.choice(words), str(_generate_key_number(cipher_type))) for _ in range(num_entries)]

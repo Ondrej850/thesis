@@ -26,7 +26,7 @@ def apply_bleed_through(
     if blur_radius is None:
         blur_radius = random.uniform(1.5, 4.0)
     if opacity is None:
-        opacity = random.uniform(0.40, 0.75)
+        opacity = random.uniform(0.40, 0.60)
 
     if back_image is not None:
         source = back_image.convert('RGB').resize(pil_img.size)
@@ -218,53 +218,54 @@ def apply_photo_augmentation(
     bboxes=None,
     labels=None,
     back_image: Image.Image | None = None,
+    bleed_through: str = "random",   # "always", "never", "random"
+    book_edges: str = "random",      # "always", "never", "random"
+    other: str = "random",           # "always", "never", "random"
 ):
     """Apply photo-realistic augmentation to a generated document PIL image.
 
-    Pipeline:
-      1. Optional bleed-through (ink ghost from reverse side)
-      2a. Book/scanner gradient edges  OR
-      2b. Surface-capture (shrink + rotate onto plain background) — mutually exclusive, ~40% surface
-      3. Optional vignette
-      4. Albumentations transforms (aging, noise, blur, perspective, compression)
-
-    If *bboxes* is provided (list of [x, y, w, h] in COCO format) spatial
-    transforms are applied to the bboxes too.  *labels* is a parallel list
-    of identifiers so the caller can map surviving bboxes back to annotations.
-
-    Pass *back_image* to supply a pre-rendered page as the bleed-through source
-    instead of the synthetic stroke-based fallback.
-
-    Returns:
-        Image.Image                       — when bboxes is None
-        (Image.Image, bboxes, labels)     — otherwise
+    bleed_through — "always": force bleed-through; "random": 50% chance; "never": skip
+    book_edges    — "always"/"random": apply when surface capture does not trigger; "never": skip
+    other         — gates surface capture, vignette, and albumentations pipeline
+                    "always": vignette always + albumentations always + 40% surface
+                    "random": 40% vignette + albumentations always + 40% surface
+                    "never":  skip all three
     """
-    if random.random() < 0.50:
+    # 1. Bleed-through
+    if bleed_through == "always" or (bleed_through == "random" and random.random() < 0.50):
         pil_img = apply_bleed_through(pil_img, back_image=back_image)
 
     img = np.array(pil_img.convert("RGB"))
+    bboxes_in = list(bboxes) if bboxes is not None else []
+    labels_in = list(labels) if labels is not None else []
 
-    use_surface = random.random() < 0.40
-
-    if use_surface:
-        bboxes_in = list(bboxes) if bboxes is not None else []
-        labels_in = list(labels) if labels is not None else []
-        if bboxes is not None:
-            img, bboxes_in, labels_in = add_surface_capture(img, bboxes_in, labels_in)
-        else:
-            img = add_surface_capture(img)
-    else:
+    # 2. Surface capture (part of "other") OR book edges — mutually exclusive
+    if other != "never":
+        use_surface = random.random() < 0.40
+        if use_surface:
+            if bboxes is not None:
+                img, bboxes_in, labels_in = add_surface_capture(img, bboxes_in, labels_in)
+            else:
+                img = add_surface_capture(img)
+        elif book_edges != "never":
+            img = add_book_edges(img)
+    elif book_edges != "never":
         img = add_book_edges(img)
-        bboxes_in = list(bboxes) if bboxes is not None else []
-        labels_in = list(labels) if labels is not None else []
 
-    if random.random() < 0.40:
-        img = _add_vignette(img, random.uniform(0.16, 0.50))
+    # 3. Vignette (part of "other")
+    if other == "always" or (other == "random" and random.random() < 0.40):
+        img = _add_vignette(img, random.uniform(0.08, 0.25))
 
-    result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
-    out_img = Image.fromarray(result["image"])
-    out_bboxes = list(result["bboxes"])
-    out_labels = list(result["labels"])
+    # 4. Albumentations pipeline (part of "other")
+    if other != "never":
+        result = _TRANSFORM(image=img, bboxes=bboxes_in, labels=labels_in)
+        out_img = Image.fromarray(result["image"])
+        out_bboxes = list(result["bboxes"])
+        out_labels = list(result["labels"])
+    else:
+        out_img = Image.fromarray(img)
+        out_bboxes = bboxes_in
+        out_labels = labels_in
 
     if bboxes is None:
         return out_img

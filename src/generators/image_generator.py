@@ -88,15 +88,13 @@ class CipherImageGenerator:
             img = Image.alpha_composite(img.convert('RGBA'), overlay).convert('RGB')
 
         if 'stains' in self.paper_config.defects:
-            self._add_stains(img, int(10 * aging))
-        if 'burns' in self.paper_config.defects:
-            self._add_burns(img, int(5 * aging))
+            self._add_stains(img, int(15 * aging))
         if 'holes' in self.paper_config.defects:
-            self._add_holes(img, int(3 * aging))
+            self._add_holes(img, int(10 * aging))
         if 'tears' in self.paper_config.defects:
             self._add_tears(img, int(5 * aging))
-        if 'wrinkled_edges' in self.paper_config.defects:
-            self._add_wrinkled_edges(img)
+        if 'ink_drops' in self.paper_config.defects:
+            self._add_ink_drops(img, int(8 * aging))
 
         return img.filter(ImageFilter.GaussianBlur(radius=0.5))
 
@@ -136,6 +134,17 @@ class CipherImageGenerator:
             alpha = random.randint(30, 80)
             draw.ellipse([x, y, x + size, y + size], fill=(*self._hex_to_rgb(color), alpha))
 
+    def _add_ink_drops(self, img: Image.Image, count: int):
+        draw = ImageDraw.Draw(img, 'RGBA')
+        ink_colors = [(15, 10, 10), (35, 30, 50), (44, 36, 22)]
+        for _ in range(count):
+            x = random.randint(0, img.width)
+            y = random.randint(0, img.height)
+            size = random.randint(4, 10)
+            color = random.choice(ink_colors)
+            alpha = random.randint(180, 240)
+            draw.ellipse([x, y, x + size, y + size], fill=(*color, alpha))
+
     def _add_burns(self, img: Image.Image, count: int):
         draw = ImageDraw.Draw(img, 'RGBA')
         for _ in range(count):
@@ -147,9 +156,11 @@ class CipherImageGenerator:
     def _add_holes(self, img: Image.Image, count: int):
         draw = ImageDraw.Draw(img, 'RGBA')
         for _ in range(count):
-            x = random.randint(50, img.width - 50)
-            y = random.randint(50, img.height - 50)
-            size = random.randint(5, 15)
+            x = random.randint(30, img.width - 30)
+            y = random.randint(30, img.height - 30)
+            size = random.randint(4, 15)
+            # Shadow rim to make holes look physical
+            draw.ellipse([x - 2, y - 2, x + size + 2, y + size + 2], fill=(160, 140, 110, 80))
             draw.ellipse([x, y, x + size, y + size], fill=(255, 255, 255, 255))
 
     def _add_tears(self, img: Image.Image, count: int):
@@ -389,18 +400,6 @@ class CipherImageGenerator:
     # Title rendering
     # ------------------------------------------------------------------
 
-    TITLE_TEMPLATES = [
-        "Alphabetum Cifratum", "Cifra Nova", "Clavis Secreta",
-        "Tabula Cifrarum", "Liber Secretus", "Cifra Generalis",
-        "Alphabetum Secretum", "Cifra Diplomatica", "Clavis Alphabetica",
-        "Cifra Regia", "Tabula Secretorum", "Clavis Cifrae",
-        "Liber Cifrarum", "Tabula Nova", "Cifra Universalis",
-        "Clavis Generalis", "Alphabetum Novum", "Liber Clausus",
-        "Nomenclator", "Cifra", "Clavis", "Alphabetum",
-        "Nomenclatura", "Sigillum", "Tabula", "Secretum",
-        "Vocabularium", "Registrum",
-    ]
-
     def render_title(
         self,
         img: Image.Image,
@@ -421,7 +420,7 @@ class CipherImageGenerator:
 
         base_color = ink_color or (44, 36, 22)
         fs = title_font_size or int(self.font_config.font_size * 1.5)
-        text = title_text or random.choice(self.TITLE_TEMPLATES)
+        text = title_text or "Nomenclator"
         words = text.split()
         max_y = self.paper_config.height - bottom_margin
         x_limit = self.paper_config.width - right_margin
@@ -478,6 +477,7 @@ class CipherImageGenerator:
         start_y: int,
         font_path: Optional[str] = None,
         use_variations: bool = True,
+        variation_level: str = "medium",
         track_annotations: bool = True,
         code_table: Optional[dict] = None,
         font_size: Optional[int] = None,
@@ -494,7 +494,7 @@ class CipherImageGenerator:
             config=table_config,
             font_size=actual_font_size,
             spacing=self.font_config.spacing,
-            variation_level="medium" if use_variations else "none",
+            variation_level=variation_level if use_variations else "none",
             ink_color=ink_color,
         )
 

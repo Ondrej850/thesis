@@ -6,50 +6,10 @@ Path: src/models/table_codes_config.py
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from src.database.database_manager import COMMON_BIGRAMS, COMMON_TRIGRAMS, NULL_SYMBOLS
 
-# Most frequent English letters as specified by user: E, T, A, O, I, N, S, H, R
+# Most frequent English letters — used only for common-boost logic in this module
 COMMON_ENGLISH_LETTERS = frozenset('ETAOINSHRD')
-
-# Common English bigrams ordered by frequency
-COMMON_BIGRAMS = [
-    'TH', 'HE', 'IN', 'ER', 'AN', 'RE', 'ON', 'EN',
-    'AT', 'ES', 'ED', 'IS', 'IT', 'AL', 'AR', 'ST',
-    'TO', 'NT', 'NG', 'SE', 'HA', 'AS', 'OU', 'IO',
-    'LE', 'VE', 'CO', 'ME', 'DE', 'HI', 'RI', 'RO',
-]
-
-# Common English trigrams ordered by frequency
-COMMON_TRIGRAMS = [
-    'THE', 'AND', 'ING', 'ENT', 'ION', 'HER', 'FOR', 'THA',
-    'NTH', 'INT', 'ERE', 'TIO', 'TER', 'EST', 'ERS', 'HAT',
-    'HIS', 'ITH', 'VER', 'ATE', 'ALL', 'NOT', 'ARE', 'WAS',
-    'ONE', 'OUT', 'MAN', 'BUT', 'OFT', 'ETH', 'STH', 'OUR',
-]
-
-# Common short words used in historical cipher codebooks
-COMMON_WORDS = [
-    'THE', 'AND', 'FOR', 'NOT', 'BUT', 'YOU', 'ALL', 'CAN',
-    'HER', 'WAS', 'ONE', 'OUR', 'OUT', 'DAY', 'GET', 'HAS',
-    'HIM', 'HIS', 'HOW', 'ITS', 'MAY', 'NEW', 'NOW', 'OLD',
-    'SEE', 'TWO', 'WAY', 'WHO', 'DID', 'LET', 'MAN', 'OWN',
-    'SAY', 'SHE', 'TOO', 'USE', 'WAR', 'GOD', 'MEN', 'END',
-    'KING', 'SAID', 'COME', 'SEND', 'GIVE', 'HAVE', 'KNOW',
-    'ARMY', 'LORD', 'THAT', 'WILL', 'WITH', 'THIS', 'FROM',
-]
-
-# Null symbols used as decorative placeholders.
-# All characters are from Basic Latin (U+0020-U+007E) or Latin-1 Supplement
-# (U+00A1-U+00FF) — ranges covered by virtually every TTF font, so they
-# always render correctly regardless of which custom handwriting font is active.
-NULL_SYMBOLS = [
-    # ASCII special characters (Basic Latin — render in every font)
-    '!', '#', '$', '%', '&', '*', '+', '=', '?', '@',
-    '^', '~', '{', '}', '[', ']', '|', '/', '<', '>',
-    # Latin-1 Supplement — render in virtually every TTF font
-    '¡', '¢', '£', '¤', '¥', '¦', '§', '©', '®', '°',
-    '±', '²', '³', 'µ', '¶', '·', '¼', '½', '¾', '¿',
-    '×', '÷',
-]
 
 
 @dataclass
@@ -82,8 +42,7 @@ class TableCodesConfig:
         elif self.content_type == 'trigrams':
             symbols = [s.lower() for s in COMMON_TRIGRAMS]
         elif self.content_type == 'words':
-            # Use pre-fetched DB words; fall back to built-in list if not provided
-            symbols = [s.lower() for s in self.words] if self.words else [s.lower() for s in COMMON_WORDS]
+            symbols = [s.lower() for s in self.words] if self.words else []
         elif self.content_type == 'nulls':
             symbols = list(NULL_SYMBOLS)
         else:

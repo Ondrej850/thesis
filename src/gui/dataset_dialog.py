@@ -10,14 +10,14 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import threading
 
-from src.models.dataset_config import DatasetConfig, TableRangeConfig
+from src.models.dataset_config import DatasetConfig, TableRangeConfig, CipherPairsRangeConfig
 from src.generators.dataset_generator import DatasetGenerator
 from src.database.database_manager import DatabaseManager
 from src.database.font_manager import FontManager
 
 
 # Reusable constants
-ALL_DEFECTS = ["wrinkled_edges", "burns", "stains", "holes", "tears", "yellowing"]
+ALL_DEFECTS = ["stains", "holes", "tears", "ink_drops"]
 ALL_CIPHER_TYPES = ["alphabet", "substitution", "bigram", "trigram", "dictionary", "nulls"]
 ALL_KEY_TYPES = ["number", "double_char", "special_character"]
 ALL_VARIATION_LEVELS = ["none", "low", "medium", "high"]
@@ -200,6 +200,9 @@ class DatasetDialog(tk.Toplevel):
         row = self._add_section_label(row, "Paper")
         self._aging_lo, self._aging_hi, row = self._add_range(row, "Aging Level:", 0, 100, 20, 80)
         self._defects_toggle, row = self._add_toggle(row, "Defects:", "random")
+        self._aug_bleed_toggle, row = self._add_toggle(row, "Bleed-through:", "always")
+        self._aug_book_edges_toggle, row = self._add_toggle(row, "Book/Scan Edges:", "always")
+        self._aug_other_toggle, row = self._add_toggle(row, "Other Augmentation:", "always")
         font_names = ["Random"] + self.font_manager.get_all_font_names()
         self._font_vars, row = self._add_checkboxes(row, "Fonts:", font_names, defaults=["Random"])
         self._var_level_vars, row = self._add_checkboxes(row, "Variation Levels:", ALL_VARIATION_LEVELS,
@@ -419,17 +422,22 @@ class DatasetDialog(tk.Toplevel):
             # Paper
             aging_level_range=(self._aging_lo.get(), self._aging_hi.get()),
             defects_mode=self._defects_toggle.get(),
+            use_bleed_through=self._aug_bleed_toggle.get(),
+            use_book_edges=self._aug_book_edges_toggle.get(),
+            use_other_augmentation=self._aug_other_toggle.get(),
             # Column pairs
-            include_column_pairs=self._cp_toggle.get(),
-            cipher_types=self._checked(self._cipher_type_vars) or ["substitution"],
-            key_types=self._checked(self._key_type_vars) or ["number"],
-            pair_formats=self._checked(self._pair_fmt_vars) or ["text_first"],
-            num_entries_range=(self._entries_lo.get(), self._entries_hi.get()),
-            cp_font_size_range=(self._cp_fs_lo.get(), self._cp_fs_hi.get()),
-            include_cp_title=self._cp_title_toggle.get(),
-            pair_spacings=self._checked(self._pair_spacing_vars) or ["normal"],
-            column_divider=self._col_divider_toggle.get(),
-            column_gap_range=(self._col_gap_lo.get(), self._col_gap_hi.get()),
+            cipher_pairs_config=CipherPairsRangeConfig(
+                include=self._cp_toggle.get(),
+                cipher_types=self._checked(self._cipher_type_vars) or ["substitution"],
+                key_types=self._checked(self._key_type_vars) or ["number"],
+                pair_formats=self._checked(self._pair_fmt_vars) or ["text_first"],
+                num_entries_range=(self._entries_lo.get(), self._entries_hi.get()),
+                font_size_range=(self._cp_fs_lo.get(), self._cp_fs_hi.get()),
+                include_title=self._cp_title_toggle.get(),
+                pair_spacings=self._checked(self._pair_spacing_vars) or ["normal"],
+                column_divider=self._col_divider_toggle.get(),
+                column_gap_range=(self._col_gap_lo.get(), self._col_gap_hi.get()),
+            ),
             # Font
             fonts=self._checked(self._font_vars) or ["Random"],
             variation_levels=self._checked(self._var_level_vars) or ["medium"],
