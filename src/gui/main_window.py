@@ -1042,43 +1042,38 @@ class CipherGeneratorGUI:
         self._schedule_debounced_regenerate()
 
     def _on_aug_bleed_change(self, *args):
-        """Bleed-through toggled: reset cached bleed params so next render re-randomises them."""
-        if self._aug_state is not None:
-            self._aug_state.apply_bleed   = False
-            self._aug_state.bleed_blur    = 2.0
-            self._aug_state.bleed_opacity = 0.5
+        """Bleed-through toggled.
+
+        Turning off: the != 'never' guard in replay mode skips it automatically.
+        Turning on: set apply_bleed=None so the next render picks fresh random params.
+        """
+        if self._aug_state is not None and self.aug_bleed_var.get():
+            self._aug_state.apply_bleed = None
         self._invalidate_paper_cache()
         self._schedule_debounced_regenerate()
 
     def _on_aug_book_edges_change(self, *args):
-        """Book-edges toggled: reset cached book-edge params so next render re-randomises them."""
-        if self._aug_state is not None and self._aug_state.spatial_mode == "book_edges":
-            self._aug_state.spatial_mode  = "none"
-            self._aug_state.book_edge_fill = 0.0
-            self._aug_state.book_left_w   = None
-            self._aug_state.book_right_w  = None
-            self._aug_state.book_top_w    = None
-            self._aug_state.book_bottom_w = None
+        """Book-edges toggled.
+
+        Turning off: the != 'never' guard in replay mode skips it automatically.
+        Turning on: set spatial_mode=None so the next render picks a fresh spatial effect.
+        """
+        if self._aug_state is not None and self.aug_book_edges_var.get():
+            self._aug_state.spatial_mode = None
         self._invalidate_paper_cache()
         self._schedule_debounced_regenerate()
 
     def _on_aug_other_change(self, *args):
-        """Other (surface/vignette/pipeline) toggled: reset all 'other' cached params."""
-        if self._aug_state is not None:
-            self._aug_state.spatial_mode        = "none"
-            self._aug_state.surface_replay      = None
-            self._aug_state.surface_bg_color    = (252, 252, 250)
-            self._aug_state.surface_shadow_off  = 12
-            self._aug_state.surface_shadow_blur = 16
-            self._aug_state.surface_shadow_alpha= 90
-            self._aug_state.book_edge_fill      = 0.0
-            self._aug_state.book_left_w         = None
-            self._aug_state.book_right_w        = None
-            self._aug_state.book_top_w          = None
-            self._aug_state.book_bottom_w       = None
-            self._aug_state.apply_vignette      = False
-            self._aug_state.vignette_strength   = 0.15
-            self._aug_state.pipeline_replay     = None
+        """Other (surface/vignette/pipeline) toggled.
+
+        Turning off: != 'never' guards in replay mode skip everything automatically.
+        Turning on: set sentinels so the next render picks fresh params for all three.
+        """
+        if self._aug_state is not None and self.aug_other_var.get():
+            self._aug_state.spatial_mode    = None
+            self._aug_state.surface_replay  = None
+            self._aug_state.apply_vignette  = None
+            self._aug_state.pipeline_replay = None
         self._invalidate_paper_cache()
         self._schedule_debounced_regenerate()
 

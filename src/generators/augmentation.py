@@ -310,7 +310,22 @@ def apply_photo_augmentation(
 
     # ── 1. Bleed-through ────────────────────────────────────────────────────
     if replay_mode:
-        if state.apply_bleed and bleed_through != "never":
+        if state.apply_bleed is None:
+            # Checkbox was just turned on — pick fresh params
+            do_bleed = (
+                bleed_through == "always"
+                or (bleed_through == "random" and random.random() < 0.50)
+            )
+            if do_bleed:
+                blur = random.uniform(1.5, 4.0)
+                opac = random.uniform(0.40, 0.60)
+                pil_img = apply_bleed_through(pil_img, blur_radius=blur, opacity=opac, back_image=back_image)
+                state.apply_bleed   = True
+                state.bleed_blur    = blur
+                state.bleed_opacity = opac
+            else:
+                state.apply_bleed = False
+        elif state.apply_bleed and bleed_through != "never":
             pil_img = apply_bleed_through(
                 pil_img,
                 blur_radius=state.bleed_blur,
@@ -336,7 +351,41 @@ def apply_photo_augmentation(
 
     # ── 2. Surface capture OR book edges ────────────────────────────────────
     if replay_mode:
-        if state.spatial_mode == "surface" and other != "never":
+        if state.spatial_mode is None:
+            # Checkbox was just turned on — pick fresh spatial effect
+            if other != "never":
+                use_surface = random.random() < 0.40
+                if use_surface:
+                    state.spatial_mode         = "surface"
+                    state.surface_bg_color     = random.choice(_BG_PRESETS)
+                    state.surface_shadow_off   = random.randint(6, 18)
+                    state.surface_shadow_blur  = random.randint(10, 24)
+                    state.surface_shadow_alpha = random.randint(60, 130)
+                    state.surface_replay       = None
+                    img, bboxes_in, labels_in  = _run_surface_capture(img, bboxes_in, labels_in, state)
+                elif book_edges != "never":
+                    state.spatial_mode   = "book_edges"
+                    h, w = img.shape[:2]
+                    state.book_edge_fill = 0.0 if random.random() < 0.5 else 255.0
+                    state.book_left_w    = min(random.randint(20, 80), w) if random.random() < 0.30 else None
+                    state.book_right_w   = min(random.randint(20, 80), w) if random.random() < 0.15 else None
+                    state.book_top_w     = min(random.randint(20, 80), h) if random.random() < 0.20 else None
+                    state.book_bottom_w  = min(random.randint(20, 80), h) if random.random() < 0.15 else None
+                    img = _apply_book_edges(img, state)
+                else:
+                    state.spatial_mode = "none"
+            elif book_edges != "never":
+                state.spatial_mode   = "book_edges"
+                h, w = img.shape[:2]
+                state.book_edge_fill = 0.0 if random.random() < 0.5 else 255.0
+                state.book_left_w    = min(random.randint(20, 80), w) if random.random() < 0.30 else None
+                state.book_right_w   = min(random.randint(20, 80), w) if random.random() < 0.15 else None
+                state.book_top_w     = min(random.randint(20, 80), h) if random.random() < 0.20 else None
+                state.book_bottom_w  = min(random.randint(20, 80), h) if random.random() < 0.15 else None
+                img = _apply_book_edges(img, state)
+            else:
+                state.spatial_mode = "none"
+        elif state.spatial_mode == "surface" and other != "never":
             img, bboxes_in, labels_in = _run_surface_capture(img, bboxes_in, labels_in, state)
         elif state.spatial_mode == "book_edges" and book_edges != "never":
             img = _apply_book_edges(img, state)
@@ -371,7 +420,17 @@ def apply_photo_augmentation(
 
     # ── 3. Vignette ─────────────────────────────────────────────────────────
     if replay_mode:
-        if state.apply_vignette and other != "never":
+        if state.apply_vignette is None:
+            # Checkbox was just turned on — pick fresh vignette params
+            do_vignette = other == "always" or (other == "random" and random.random() < 0.40)
+            if do_vignette:
+                strength = random.uniform(0.08, 0.25)
+                img = _add_vignette(img, strength)
+                state.apply_vignette    = True
+                state.vignette_strength = strength
+            else:
+                state.apply_vignette = False
+        elif state.apply_vignette and other != "never":
             img = _add_vignette(img, state.vignette_strength)
     else:
         do_vignette = other == "always" or (other == "random" and random.random() < 0.40)
