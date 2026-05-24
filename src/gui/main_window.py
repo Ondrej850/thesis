@@ -10,14 +10,13 @@ import random
 import os
 import threading
 from typing import List, Tuple
-import numpy as np
 from src.models.paper_config import PaperConfig
 from src.models.font_config import FontConfig
 from src.models.table_codes_config import TableCodesConfig
 from src.constants import INK_COLOR_MAP, PAIR_SPACING_PX
 from src.database.database_manager import DatabaseManager
 from src.generators.image_generator import CipherImageGenerator
-from src.generators.augmentation import apply_photo_augmentation
+from src.generators.augmentation import apply_photo_augmentation, AugmentationState
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.database.font_manager import FontManager
 from src.gui.dataset_dialog import DatasetDialog
@@ -133,8 +132,9 @@ class CipherGeneratorGUI:
         self._debounce_delay = 0.3  # 300ms delay before regenerating
         self._is_generating = False  # Prevent concurrent generations
 
-        # Fixed random seed for augmentation — re-randomised only on manual Generate Preview
-        self._aug_seed: int | None = None
+        # Cached augmentation state — cleared only on manual Generate Preview so that
+        # every auto-regenerate applies identical photographic effects.
+        self._aug_state: AugmentationState | None = None
 
         # Cached cipher entries for consistent preview during visual changes
         self._cached_cipher_entries = None
@@ -1102,8 +1102,8 @@ class CipherGeneratorGUI:
                 _p.cached_code_table = None
                 _p.cached_code_table_key = None
                 _p.cached_words = None
-            # Pick new augmentation seed so re-renders stay visually consistent
-            self._aug_seed = random.randint(0, 2**31 - 1)
+            # Reset augmentation state so the next render picks fresh random effects
+            self._aug_state = None
             self._do_generate(show_message=True)
             # Enable auto-regeneration on future config changes
             self._preview_generated_once = True
@@ -1272,24 +1272,16 @@ class CipherGeneratorGUI:
                     column_divider=self.column_divider_var.get(),
                 )
 
-            # Store for saving — augment image and update annotations together.
-            # Use the fixed aug seed so augmentation choices are stable across
-            # auto-regenerates; only a manual Generate Preview picks a new seed.
-            _py_state = random.getstate()
-            _np_state = np.random.get_state()
-            if self._aug_seed is not None:
-                random.seed(self._aug_seed)
-                np.random.seed(self._aug_seed)
-            try:
-                img = self._augment_with_annotations(
-                    img, generator,
-                    bleed_through="always" if self.aug_bleed_var.get() else "never",
-                    book_edges="always" if self.aug_book_edges_var.get() else "never",
-                    other="always" if self.aug_other_var.get() else "never",
-                )
-            finally:
-                random.setstate(_py_state)
-                np.random.set_state(_np_state)
+            # Augment image, keeping annotations in sync.  Re-use _aug_state so
+            # perspective/colour/edges are identical across auto-regenerates; the
+            # state is cleared to None only when Generate Preview is clicked.
+            img, self._aug_state = self._augment_with_annotations(
+                img, generator,
+                bleed_through="always" if self.aug_bleed_var.get() else "never",
+                book_edges="always" if self.aug_book_edges_var.get() else "never",
+                other="always" if self.aug_other_var.get() else "never",
+                aug_state=self._aug_state,
+            )
             self.preview_image = img
 
             # Display preview
@@ -1522,28 +1514,29 @@ class CipherGeneratorGUI:
         bleed_through: str = "random",
         book_edges: str = "random",
         other: str = "random",
-    ) -> Image.Image:
+        aug_state: AugmentationState | None = None,
+    ):
         """Run augmentation and keep generator.coco_manager bboxes in sync.
 
-        The Perspective transform warps pixel positions, so any annotation
-        bbox must be transformed alongside the image. Annotations whose
-        bbox ends up off-canvas (or below the visibility threshold) are
-        dropped from the manager.
+        Returns (augmented_image, AugmentationState).  Pass the returned state
+        back on subsequent calls to replay identical photographic effects.
         """
         aug_kwargs = dict(
             bleed_through=bleed_through,
             book_edges=book_edges,
             other=other,
+            state=aug_state,
         )
         coco = generator.coco_manager
         anns = coco.annotations
         if not anns:
-            return apply_photo_augmentation(img, **aug_kwargs)
+            out_img, new_state = apply_photo_augmentation(img, **aug_kwargs)
+            return out_img, new_state
 
         bboxes = [list(a["bbox"]) for a in anns]
         labels = list(range(len(anns)))
 
-        new_img, new_bboxes, surviving_labels = apply_photo_augmentation(
+        new_img, new_bboxes, surviving_labels, new_state = apply_photo_augmentation(
             img, bboxes=bboxes, labels=labels, **aug_kwargs,
         )
 
@@ -1563,7 +1556,7 @@ class CipherGeneratorGUI:
             ann["segmentation"] = [[x, y, x + w, y, x + w, y + h, x, y + h]]
             rebuilt.append(ann)
         coco.annotations = rebuilt
-        return new_img
+        return new_img, new_state
 
     def _display_preview(self, img: Image.Image):
         """Display preview image on canvas - scaled to fit entirely"""
