@@ -13,7 +13,7 @@ from src.models.font_config import FontConfig
 from src.models.table_codes_config import TableCodesConfig
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.constants import FALLBACK_FONTS
-from .text_variation import VariatedTextRenderer, CipherEntryRenderer
+from .text_variation import VariatedTextRenderer, CipherPairsRenderer
 from .table_codes_generator import TableCodesGenerator
 
 
@@ -48,7 +48,7 @@ class CipherImageGenerator:
         self.paper_config = paper_config
         self.font_config = font_config
         text_renderer = VariatedTextRenderer(variation_level)
-        self.cipher_renderer = CipherEntryRenderer(text_renderer)
+        self.cipher_renderer = CipherPairsRenderer(text_renderer)
         self.coco_manager = COCOAnnotationManager()
         self.current_image_id: Optional[int] = None
 
