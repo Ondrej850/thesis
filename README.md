@@ -69,7 +69,7 @@ The GUI opens immediately — no configuration needed.
 ### Batch dataset generation
 - Configure parameter *ranges* (min/max) for every setting
 - Generate N images with randomly sampled configurations
-- Single merged annotation file covering the entire dataset
+- Single json annotation file covering the entire dataset for COCO or per-image .txt file for YOLO annotations
 
 ## Project Structure
 
