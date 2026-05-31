@@ -1174,13 +1174,11 @@ class CipherGeneratorGUI:
             )
 
             font_config = FontConfig(
-                font_name="custom",
                 font_size=self.cp_font_size_var.get(),
                 column_separator=self.col_sep_var.get(),
                 key_separator=self.key_sep_var.get(),
                 dash_count=self.dash_count_var.get(),
                 spacing=self.spacing_var.get(),
-                language="latin"
             )
 
             # Create generator with variation level
