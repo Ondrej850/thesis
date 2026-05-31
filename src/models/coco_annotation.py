@@ -45,11 +45,6 @@ class BoundingBox:
         self.max_x = max(self.max_x, x)
         self.max_y = max(self.max_y, y)
 
-    def add_char_bbox(self, x: float, y: float, width: float, height: float):
-        """Add character bounding box"""
-        self.add_point(x, y)
-        self.add_point(x + width, y + height)
-
     def to_coco_bbox(self) -> List[float]:
         """Convert to COCO bbox format [x, y, width, height]"""
         if self.min_x == float('inf'):

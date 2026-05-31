@@ -113,18 +113,6 @@ def _apply_book_edges(image: np.ndarray, state: AugmentationState) -> np.ndarray
     return arr.astype(np.uint8)
 
 
-def add_book_edges(image: np.ndarray) -> np.ndarray:
-    """Public backward-compatible wrapper: choose random params, apply, return image."""
-    state = AugmentationState()
-    state.spatial_mode = "book_edges"
-    state.book_edge_fill = 0.0 if random.random() < 0.5 else 255.0
-    h, w = image.shape[:2]
-    state.book_left_w  = min(random.randint(20, 80), w) if random.random() < 0.30 else None
-    state.book_right_w = min(random.randint(20, 80), w) if random.random() < 0.15 else None
-    state.book_top_w   = min(random.randint(20, 80), h) if random.random() < 0.20 else None
-    state.book_bottom_w= min(random.randint(20, 80), h) if random.random() < 0.15 else None
-    return _apply_book_edges(image, state)
-
 
 # ---------------------------------------------------------------------------
 # Vignette
@@ -224,23 +212,6 @@ def _run_surface_capture(
     transformed[bg_mask] = bg[bg_mask]
     return transformed, list(result["bboxes"]), list(result["labels"])
 
-
-def add_surface_capture(image: np.ndarray, bboxes=None, labels=None):
-    """Public backward-compatible wrapper: choose random params and apply."""
-    state = AugmentationState()
-    state.spatial_mode = "surface"
-    state.surface_bg_color = random.choice(_BG_PRESETS)
-    state.surface_shadow_off = random.randint(6, 18)
-    state.surface_shadow_blur = random.randint(10, 24)
-    state.surface_shadow_alpha = random.randint(60, 130)
-
-    bboxes_in = list(bboxes) if bboxes is not None else []
-    labels_in = list(labels) if labels is not None else []
-    img_out, bboxes_out, labels_out = _run_surface_capture(image, bboxes_in, labels_in, state)
-
-    if bboxes is None:
-        return img_out
-    return img_out, bboxes_out, labels_out
 
 
 # ---------------------------------------------------------------------------

@@ -145,14 +145,6 @@ class CipherImageGenerator:
             alpha = random.randint(180, 240)
             draw.ellipse([x, y, x + size, y + size], fill=(*color, alpha))
 
-    def _add_burns(self, img: Image.Image, count: int):
-        draw = ImageDraw.Draw(img, 'RGBA')
-        for _ in range(count):
-            x = random.randint(0, img.width)
-            y = random.randint(0, img.height)
-            size = random.randint(15, 40)
-            draw.ellipse([x, y, x + size, y + size], fill=(80, 60, 40, 120))
-
     def _add_holes(self, img: Image.Image, count: int):
         draw = ImageDraw.Draw(img, 'RGBA')
         for _ in range(count):
@@ -185,16 +177,6 @@ class CipherImageGenerator:
                 points = [(x, y), (x - random.randint(10, 30), y + random.randint(-20, 20))]
             draw.line(points, fill=(0, 0, 0, 255), width=2)
 
-    def _add_wrinkled_edges(self, img: Image.Image):
-        draw = ImageDraw.Draw(img, 'RGBA')
-        edge_width = 30
-        for i in range(edge_width):
-            alpha = int(50 * (1 - i / edge_width))
-            draw.line([(0, i), (img.width, i)], fill=(100, 80, 60, alpha))
-            draw.line(
-                [(0, img.height - 1 - i), (img.width, img.height - 1 - i)],
-                fill=(100, 80, 60, alpha),
-            )
 
     # ------------------------------------------------------------------
     # COCO management
