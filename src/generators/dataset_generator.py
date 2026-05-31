@@ -275,8 +275,8 @@ class DatasetGenerator:
         """Generate a plain aged-paper background image with bleed-through augmentation."""
         paper_config = PaperConfig(aging_level=params["aging_level"], defects=params["defects"])
         font_config = FontConfig(
-            font_name="custom", font_size=14, column_separator="none",
-            key_separator="none", dash_count=1, spacing=0, language="latin",
+            font_size=14, column_separator="none",
+            key_separator="none", dash_count=1, spacing=0
         )
         generator = CipherImageGenerator(paper_config, font_config, "low")
         img = generator.create_aged_paper()
@@ -301,13 +301,11 @@ class DatasetGenerator:
         return (
             PaperConfig(aging_level=params["aging_level"], defects=params["defects"]),
             FontConfig(
-                font_name="custom",
                 font_size=params["cp_font_size"],
                 column_separator=params["col_separator"],
                 key_separator=params["key_separator"],
                 dash_count=params["dash_count"],
                 spacing=params["spacing"],
-                language="latin",
             ),
         )
 
