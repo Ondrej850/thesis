@@ -251,7 +251,7 @@ class CipherGeneratorGUI:
         ttk.Label(frame, text="Aging Level:").grid(row=0, column=0, sticky=tk.W, pady=2)
         self.aging_var = tk.IntVar(value=50)
         aging_scale = ttk.Scale(frame, from_=0, to=100, variable=self.aging_var,
-                               orient=tk.HORIZONTAL, length=200)
+                               orient=tk.HORIZONTAL, length=200, command=lambda v: self.aging_var.set(int(float(v))))
         aging_scale.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=2)
         ttk.Label(frame, textvariable=self.aging_var).grid(row=0, column=2, padx=5)
 
