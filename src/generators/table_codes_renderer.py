@@ -34,7 +34,7 @@ from src.generators.text_variation import VariatedTextRenderer
 from src.constants import FALLBACK_FONTS
 
 
-class TableCodesGenerator:
+class TableCodesRenderer:
     """Generates and renders a homophonic code table on a PIL Image."""
 
     BASE_COLOR: Tuple[int, int, int] = (44, 36, 22)
