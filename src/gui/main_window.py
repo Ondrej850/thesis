@@ -1474,7 +1474,7 @@ class CipherGeneratorGUI:
         Cache key: (content_type, num_codes, use_common_boost, common_codes).
         Visual settings (font size, row spacing, …) do NOT invalidate the cache.
         """
-        from src.generators.table_codes_generator import TableCodesGenerator
+        from src.generators.table_codes_renderer import TableCodesRenderer
 
         cache_key = (
             table_config.content_type,
@@ -1487,7 +1487,7 @@ class CipherGeneratorGUI:
         if panel.cached_code_table is not None and panel.cached_code_table_key == cache_key:
             return panel.cached_code_table
 
-        gen = TableCodesGenerator(
+        gen = TableCodesRenderer(
             config=table_config,
             font_size=panel.font_size_var.get(),
             spacing=self.spacing_var.get(),

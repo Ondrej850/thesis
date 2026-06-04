@@ -14,7 +14,7 @@ from src.models.table_codes_config import TableCodesConfig
 from src.annotations.coco_manager import COCOAnnotationManager
 from src.constants import FALLBACK_FONTS
 from .text_variation import VariatedTextRenderer, CipherPairsRenderer
-from .table_codes_generator import TableCodesGenerator
+from .table_codes_renderer import TableCodesRenderer
 
 
 def _load_font_obj(font_path: Optional[str], size: int) -> ImageFont.FreeTypeFont:
@@ -472,7 +472,7 @@ class CipherImageGenerator:
             font_path = _get_fallback_font_path()
 
         actual_font_size = font_size if font_size is not None else self.font_config.font_size
-        table_gen = TableCodesGenerator(
+        table_gen = TableCodesRenderer(
             config=table_config,
             font_size=actual_font_size,
             spacing=self.font_config.spacing,
