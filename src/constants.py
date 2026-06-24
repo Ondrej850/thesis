@@ -2,6 +2,8 @@
 Shared constants used across generators and GUI.
 """
 
+import platform
+
 INK_COLOR_MAP = {
     "dark_brown":  (44, 36, 22),
     "black":       (15, 10, 10),
@@ -23,10 +25,17 @@ KEY_NUMBER_RANGES = {
     "nulls":        (900, 950),
 }
 
-FALLBACK_FONTS = [
-    "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
-    "/System/Library/Fonts/Times.ttc",
-    "times.ttf",
-    "georgia.ttf",
-    "arial.ttf",
-]
+def _get_fallback_fonts():
+    common = ["times.ttf", "georgia.ttf", "arial.ttf"]
+    if platform.system() == "Linux":
+        return [
+            "/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+        ] + common
+    elif platform.system() == "Darwin":
+        return ["/System/Library/Fonts/Times.ttc"] + common
+    else:  # Windows
+        return common
+
+
+FALLBACK_FONTS = _get_fallback_fonts()
