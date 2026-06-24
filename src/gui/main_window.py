@@ -3,6 +3,7 @@ Main GUI window for cipher generator application
 Path: src/gui/main_window.py
 """
 
+import sys
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from PIL import Image, ImageTk
@@ -116,6 +117,13 @@ class CipherGeneratorGUI:
         self.root = root
         self.root.title("Historical Cipher Generator - 15th Century")
         self.root.geometry("1400x900")
+        self.root.minsize(1400, 750)
+        if sys.platform == 'win32':
+            self.root.state('zoomed')
+        else:
+            self.root.attributes('-zoomed', True)
+
+        self._mouse_in_config = False
 
         # Initialize components
         self.db = DatabaseManager()
@@ -213,11 +221,13 @@ class CipherGeneratorGUI:
                 self._config_canvas.yview_scroll(3, "units")
 
         def _bind_wheel(event):
+            self._mouse_in_config = True
             self._config_canvas.bind_all("<MouseWheel>", _on_mousewheel)
             self._config_canvas.bind_all("<Button-4>", _on_mousewheel_linux)
             self._config_canvas.bind_all("<Button-5>", _on_mousewheel_linux)
 
         def _unbind_wheel(event):
+            self._mouse_in_config = False
             self._config_canvas.unbind_all("<MouseWheel>")
             self._config_canvas.unbind_all("<Button-4>")
             self._config_canvas.unbind_all("<Button-5>")
@@ -240,6 +250,8 @@ class CipherGeneratorGUI:
         self.setup_layout_config(config_frame)
         self.setup_preview(preview_frame)
         self.setup_buttons(main_frame)
+
+        self._apply_widget_scroll_fix()
 
     def setup_paper_config(self, parent):
         """Setup paper configuration section"""
@@ -707,6 +719,7 @@ class CipherGeneratorGUI:
         # Sync initial widget states
         self._on_panel_include_toggle(panel)
         self._update_num_symbols_visibility(panel)
+        self._apply_widget_scroll_fix(outer)
 
     def _bind_panel_listeners(self, panel: _TablePanel):
         """Bind change-trace listeners for one table panel."""
@@ -950,15 +963,30 @@ class CipherGeneratorGUI:
             pass
 
     def setup_preview(self, parent):
-        """Setup preview area - fits entire A4 page without scrolling"""
-        # Create canvas frame
+        """Setup preview area with scrollbars for small windows."""
         canvas_frame = ttk.Frame(parent)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
+        canvas_frame.rowconfigure(0, weight=1)
+        canvas_frame.columnconfigure(0, weight=1)
 
-        # Canvas sized to fit A4 ratio (800x1100) scaled down to fit in window
-        # Height ~750px to leave room for buttons, width proportional
         self.preview_canvas = tk.Canvas(canvas_frame, width=550, height=750, bg='#e0e0e0')
-        self.preview_canvas.pack(fill=tk.BOTH, expand=True)
+        self.preview_canvas.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+
+        h_scroll = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.preview_canvas.xview)
+        h_scroll.grid(row=1, column=0, sticky=(tk.E, tk.W))
+        v_scroll = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.preview_canvas.yview)
+        v_scroll.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        self.preview_canvas.configure(xscrollcommand=h_scroll.set, yscrollcommand=v_scroll.set)
+
+        def _preview_scroll(event):
+            self.preview_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _preview_scroll_linux(event):
+            self.preview_canvas.yview_scroll(-3 if event.num == 4 else 3, "units")
+
+        self.preview_canvas.bind("<MouseWheel>", _preview_scroll)
+        self.preview_canvas.bind("<Button-4>", _preview_scroll_linux)
+        self.preview_canvas.bind("<Button-5>", _preview_scroll_linux)
 
     def setup_buttons(self, parent):
         """Setup action buttons"""
@@ -975,6 +1003,36 @@ class CipherGeneratorGUI:
                   command=self.export_yolo_annotations, width=15).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Generate Dataset",
                   command=self.open_dataset_dialog, width=18).pack(side=tk.LEFT, padx=5)
+
+    def _disable_widget_scroll(self, widget):
+        """Redirect mousewheel on a Spinbox/Combobox to the config canvas scroll."""
+        def _redirect(event):
+            if self._mouse_in_config:
+                self._config_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                return "break"
+
+        def _redirect_up(event):
+            if self._mouse_in_config:
+                self._config_canvas.yview_scroll(-3, "units")
+                return "break"
+
+        def _redirect_down(event):
+            if self._mouse_in_config:
+                self._config_canvas.yview_scroll(3, "units")
+                return "break"
+
+        widget.bind("<MouseWheel>", _redirect)
+        widget.bind("<Button-4>", _redirect_up)
+        widget.bind("<Button-5>", _redirect_down)
+
+    def _apply_widget_scroll_fix(self, parent=None):
+        """Recursively bind mousewheel redirect on all Spinbox/Combobox widgets."""
+        if parent is None:
+            parent = self.root
+        for widget in parent.winfo_children():
+            if isinstance(widget, (ttk.Spinbox, ttk.Combobox)):
+                self._disable_widget_scroll(widget)
+            self._apply_widget_scroll_fix(widget)
 
     def _bind_config_change_listeners(self):
         """Bind change listeners to all config widgets for real-time preview"""
@@ -1627,6 +1685,7 @@ class CipherGeneratorGUI:
         # Display image centered
         self.preview_canvas.create_image(x_offset, y_offset, anchor=tk.NW, image=photo)
         self.preview_canvas.image = photo  # Keep reference
+        self.preview_canvas.configure(scrollregion=self.preview_canvas.bbox("all"))
 
     def save_image(self):
         """Save generated image"""
